@@ -1,0 +1,219 @@
+/* ============================================================
+   Nexus Hub — Dark Scriptorium Design System
+   Fonts loaded in index.html
+   ============================================================ */
+
+:root {
+  /* ── Backgrounds — layered depth ── */
+  --bg-void:       #080B14;   /* Window chrome, outermost */
+  --bg-base:       #0D1117;   /* Main surface */
+  --bg-surface:    #161B27;   /* Panels, cards */
+  --bg-raised:     #1C2333;   /* Hovered / selected items */
+  --bg-overlay:    #212842;   /* Modals, popovers */
+
+  /* ── Borders — ornate but subtle ── */
+  --border-dim:    #1E2A3E;   /* Resting dividers */
+  --border-mid:    #2A3A55;   /* Section separators */
+  --border-lit:    #3D5280;   /* Active panel border, focus rings */
+  --border-glow:   #4F6BA3;   /* Accent border on hover */
+
+  /* ── Text hierarchy ── */
+  --text-primary:  #E8EDF5;   /* Main content */
+  --text-secondary:#8FA3C0;   /* Metadata, timestamps */
+  --text-muted:    #4A607A;   /* Disabled, placeholder */
+  --text-inverse:  #080B14;   /* Text on bright CTA buttons */
+
+  /* ── Urgency spectrum — RPG rarity ── */
+  --urgency-low:      #4A607A;
+  --urgency-medium:   #D4943A;
+  --urgency-high:     #C0522B;
+  --urgency-critical: #C4384A;
+
+  --urgency-low-bg:      rgba(74, 96, 122, 0.15);
+  --urgency-medium-bg:   rgba(212, 148, 58, 0.15);
+  --urgency-high-bg:     rgba(192, 82, 43, 0.18);
+  --urgency-critical-bg: rgba(196, 56, 74, 0.20);
+
+  /* ── Source identity — fantasy class colors ── */
+  --source-jira:   #2D8EFF;   /* The Knight */
+  --source-gmail:  #E8453C;   /* The Mage */
+  --source-slack:  #9B6DFF;   /* The Wizard */
+  --source-github: #3FB950;   /* The Druid */
+
+  --source-jira-bg:   rgba(45, 142, 255, 0.08);
+  --source-gmail-bg:  rgba(232, 69, 60, 0.08);
+  --source-slack-bg:  rgba(155, 109, 255, 0.08);
+  --source-github-bg: rgba(63, 185, 80, 0.08);
+
+  /* ── Interactive ── */
+  --accent-primary: #22C55E;
+  --accent-hover:   #16A34A;
+  --accent-focus:   rgba(34, 197, 94, 0.35);
+
+  /* ── Typography ── */
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-data:    'JetBrains Mono', 'Fira Code', monospace;
+
+  /* ── Spacing (8px base) ── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  /* ── Border radius ── */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+
+  /* ── Transitions ── */
+  --transition-fast:   100ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow:   300ms ease-out;
+
+  /* ── Z-index scale ── */
+  --z-base:    10;
+  --z-panel:   20;
+  --z-overlay: 30;
+  --z-modal:   40;
+  --z-toast:   50;
+}
+
+/* ── Reset ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-family: var(--font-data);
+  font-size: 12px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Focus ring — double-ring for universal visibility ── */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--accent-focus);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar          { width: 5px; height: 5px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: var(--border-mid); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-lit); }
+
+/* ── Base elements ── */
+button {
+  font-family: var(--font-data);
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+  line-height: 1;
+}
+
+/* ── Section header with trailing gradient rule ── */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: var(--sp-3) var(--sp-3) var(--sp-1);
+}
+
+.section-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--border-mid), transparent);
+}
+
+/* ── Feed panel dot-grid texture ── */
+.feed-panel {
+  background-color: var(--bg-base);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.015) 1px,
+    transparent 0
+  );
+  background-size: 24px 24px;
+}
+
+/* ── Feed item ── */
+.feed-item {
+  border-left: 3px solid var(--source-color, var(--border-dim));
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  cursor: pointer;
+}
+
+.feed-item:hover {
+  background: var(--bg-raised);
+}
+
+.feed-item[data-selected="true"] {
+  background: var(--bg-overlay);
+  border-left-width: 4px;
+}
+
+/* ── Urgency badge ── */
+.urgency-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.urgency-badge[data-urgency="critical"] {
+  animation: critical-pulse 2s ease-in-out infinite;
+}
+
+/* ── Skeleton loading ── */
+.skeleton {
+  background: var(--bg-raised);
+  border-radius: var(--radius-sm);
+  animation: skeleton-pulse 1.5s ease-in-out infinite alternate;
+}
+
+/* ── Animations ── */
+@keyframes skeleton-pulse {
+  from { opacity: 0.4; }
+  to   { opacity: 0.8; }
+}
+
+@keyframes critical-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(196, 56, 74, 0); }
+  50%       { box-shadow: 0 0 0 3px rgba(196, 56, 74, 0.3); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .urgency-badge[data-urgency="critical"] { animation: none; }
+  .skeleton { animation: none; opacity: 0.6; }
+}
