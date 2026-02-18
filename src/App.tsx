@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Bell, RefreshCw, Settings } from "lucide-react";
+import { Bell, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import "./styles/theme.css";
 
 import { useItems, type NexusItem } from "./hooks/useItems";
 import { Feed } from "./components/Feed";
 import { DetailPanel } from "./components/DetailPanel";
+import { Settings } from "./components/Settings";
 
 type View   = "dashboard" | "settings";
 type Source = "all" | "jira" | "gmail" | "slack" | "github";
@@ -69,7 +70,7 @@ export default function App() {
           <DetailPanel item={selectedItem} onMarkRead={markRead} />
         </div>
       ) : (
-        <SettingsPlaceholder onBack={() => setView("dashboard")} />
+        <Settings onBack={() => setView("dashboard")} />
       )}
 
       <StatusBar />
@@ -134,7 +135,7 @@ function Titlebar({
         <IconButton label="Notifications" icon={<Bell size={15} />} />
         <IconButton
           label={view === "settings" ? "Dashboard" : "Settings"}
-          icon={<Settings size={15} />}
+          icon={<SettingsIcon size={15} />}
           active={view === "settings"}
           onClick={onToggleSettings}
         />
@@ -269,54 +270,6 @@ function Sidebar({
         ))}
       </div>
     </aside>
-  );
-}
-
-/* ── Settings placeholder ─────────────────────────────────── */
-
-function SettingsPlaceholder({ onBack }: { onBack: () => void }) {
-  return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        background: "var(--bg-base)",
-        padding: "var(--sp-6)",
-      }}
-    >
-      <h2
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 20,
-          fontWeight: 800,
-          color: "var(--text-primary)",
-          marginBottom: "var(--sp-4)",
-        }}
-      >
-        Settings
-      </h2>
-      <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
-        Plugin configuration — Task 9.
-      </p>
-      <button
-        onClick={onBack}
-        style={{
-          marginTop: "var(--sp-4)",
-          padding: "6px 16px",
-          borderRadius: "var(--radius-md)",
-          border: "1px solid var(--border-mid)",
-          background: "var(--bg-raised)",
-          color: "var(--text-secondary)",
-          fontSize: 12,
-          fontFamily: "var(--font-data)",
-          cursor: "pointer",
-          alignSelf: "flex-start",
-        }}
-      >
-        ← Back to dashboard
-      </button>
-    </div>
   );
 }
 
