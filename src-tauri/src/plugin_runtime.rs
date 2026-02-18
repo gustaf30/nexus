@@ -48,13 +48,19 @@ pub fn execute_plugin(
     function: &str,
     config_json: &str,
 ) -> Result<String, String> {
-    let plugin_url = format!(
-        "file://{}",
-        plugin_path
-            .canonicalize()
-            .map_err(|e| format!("Cannot resolve plugin path: {}", e))?
-            .display()
-    );
+    let canonical = plugin_path
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve plugin path: {}", e))?;
+
+    #[cfg(windows)]
+    let plugin_url = {
+        let path_str = canonical.to_string_lossy().replace('\\', "/");
+        // Strip UNC prefix \\?\ that canonicalize() adds on Windows
+        let path_str = path_str.trim_start_matches("//?/");
+        format!("file:///{}", path_str)
+    };
+    #[cfg(not(windows))]
+    let plugin_url = format!("file://{}", canonical.display());
 
     // Deno eval script: import the function, call it with the config JSON, print the result.
     let script = format!(
@@ -74,7 +80,8 @@ console.log(result);"#
         .output()
         .map_err(|e| {
             format!(
-                "Failed to launch deno: {}. Ensure 'deno' is installed and in PATH.",
+                "Failed to launch deno: {}. Install Deno: https://deno.com \
+                 (Windows: winget install Deno.Deno)",
                 e
             )
         })?;
