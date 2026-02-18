@@ -4,6 +4,7 @@ import "./styles/theme.css";
 
 import { useItems, type NexusItem } from "./hooks/useItems";
 import { Feed } from "./components/Feed";
+import { DetailPanel } from "./components/DetailPanel";
 
 type View   = "dashboard" | "settings";
 type Source = "all" | "jira" | "gmail" | "slack" | "github";
@@ -267,90 +268,6 @@ function Sidebar({
           </label>
         ))}
       </div>
-    </aside>
-  );
-}
-
-/* ── Detail panel (placeholder — fully implemented in Task 8) */
-
-function DetailPanel({
-  item,
-  onMarkRead,
-}: {
-  item: NexusItem | null;
-  onMarkRead: (id: string, read: boolean) => void;
-}) {
-  return (
-    <aside
-      style={{
-        width: 280,
-        flexShrink: 0,
-        background: "var(--bg-surface)",
-        borderLeft: "1px solid var(--border-dim)",
-        display: "flex",
-        flexDirection: "column",
-        overflowY: "auto",
-      }}
-    >
-      {item ? (
-        <div style={{ padding: "var(--sp-4)" }}>
-          <p
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 13,
-              fontWeight: 700,
-              color: "var(--text-primary)",
-              marginBottom: "var(--sp-2)",
-              lineHeight: 1.4,
-            }}
-          >
-            {item.title}
-          </p>
-          <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--sp-4)" }}>
-            {item.source_id} · {item.source}
-          </p>
-          <button
-            onClick={() => onMarkRead(item.id, !item.is_read)}
-            style={{
-              padding: "5px 12px",
-              border: "1px solid var(--border-mid)",
-              borderRadius: "var(--radius-md)",
-              background: "var(--bg-raised)",
-              color: "var(--text-secondary)",
-              fontSize: 11,
-              fontFamily: "var(--font-data)",
-              cursor: "pointer",
-            }}
-          >
-            {item.is_read ? "Mark unread" : "Mark read"}
-          </button>
-          <p
-            style={{
-              marginTop: "var(--sp-6)",
-              fontSize: 10,
-              color: "var(--text-muted)",
-              fontFamily: "var(--font-data)",
-            }}
-          >
-            Full detail panel — Task 8
-          </p>
-        </div>
-      ) : (
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 11,
-            color: "var(--text-muted)",
-            padding: "var(--sp-4)",
-            textAlign: "center",
-          }}
-        >
-          Select an item to see details.
-        </div>
-      )}
     </aside>
   );
 }
