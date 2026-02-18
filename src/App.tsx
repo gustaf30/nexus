@@ -2,7 +2,10 @@ import { useState } from "react";
 import { Bell, RefreshCw, Settings } from "lucide-react";
 import "./styles/theme.css";
 
-type View = "dashboard" | "settings";
+import { useItems, type NexusItem } from "./hooks/useItems";
+import { Feed } from "./components/Feed";
+
+type View   = "dashboard" | "settings";
 type Source = "all" | "jira" | "gmail" | "slack" | "github";
 
 const SOURCES: { id: Source; label: string; color: string }[] = [
@@ -13,24 +16,56 @@ const SOURCES: { id: Source; label: string; color: string }[] = [
   { id: "github", label: "GitHub", color: "var(--source-github)" },
 ];
 
+/* ── Root ─────────────────────────────────────────────────── */
+
 export default function App() {
   const [view, setView]               = useState<View>("dashboard");
   const [activeSource, setActiveSource] = useState<Source>("all");
+  const [unreadOnly, setUnreadOnly]   = useState(false);
+  const [selectedItem, setSelectedItem] = useState<NexusItem | null>(null);
+
+  const source = activeSource === "all" ? null : activeSource;
+  const { items, loading, error, refresh, markRead } = useItems(source, unreadOnly);
+
+  const handleRefresh = () => refresh("jira");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <Titlebar
         view={view}
+        loading={loading}
         onToggleSettings={() =>
           setView((v) => (v === "settings" ? "dashboard" : "settings"))
         }
+        onRefresh={handleRefresh}
       />
 
       {view === "dashboard" ? (
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-          <Sidebar activeSource={activeSource} onSourceChange={setActiveSource} />
-          <FeedPanel />
-          <DetailPanel />
+          <Sidebar
+            activeSource={activeSource}
+            onSourceChange={(s) => {
+              setActiveSource(s);
+              setSelectedItem(null);
+            }}
+            unreadOnly={unreadOnly}
+            onUnreadOnlyChange={setUnreadOnly}
+          />
+
+          <main
+            className="feed-panel"
+            style={{ flex: 1, minWidth: 320, overflowY: "auto", display: "flex", flexDirection: "column" }}
+          >
+            <Feed
+              items={items}
+              loading={loading}
+              error={error}
+              selectedId={selectedItem?.id ?? null}
+              onSelect={setSelectedItem}
+            />
+          </main>
+
+          <DetailPanel item={selectedItem} onMarkRead={markRead} />
         </div>
       ) : (
         <SettingsPlaceholder onBack={() => setView("dashboard")} />
@@ -45,10 +80,14 @@ export default function App() {
 
 function Titlebar({
   view,
+  loading,
   onToggleSettings,
+  onRefresh,
 }: {
   view: View;
+  loading: boolean;
   onToggleSettings: () => void;
+  onRefresh: () => void;
 }) {
   return (
     <header
@@ -90,7 +129,7 @@ function Titlebar({
       </div>
 
       {/* Actions */}
-      <div style={{ display: "flex", alignItems: "center", gap: var_sp(2) }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
         <IconButton label="Notifications" icon={<Bell size={15} />} />
         <IconButton
           label={view === "settings" ? "Dashboard" : "Settings"}
@@ -98,7 +137,17 @@ function Titlebar({
           active={view === "settings"}
           onClick={onToggleSettings}
         />
-        <IconButton label="Refresh all plugins" icon={<RefreshCw size={15} />} />
+        <IconButton
+          label="Refresh all plugins"
+          icon={
+            <RefreshCw
+              size={15}
+              style={loading ? { animation: "spin 1s linear infinite" } : undefined}
+            />
+          }
+          onClick={onRefresh}
+          disabled={loading}
+        />
       </div>
     </header>
   );
@@ -109,9 +158,13 @@ function Titlebar({
 function Sidebar({
   activeSource,
   onSourceChange,
+  unreadOnly,
+  onUnreadOnlyChange,
 }: {
   activeSource: Source;
   onSourceChange: (s: Source) => void;
+  unreadOnly: boolean;
+  onUnreadOnlyChange: (v: boolean) => void;
 }) {
   return (
     <aside
@@ -137,7 +190,7 @@ function Sidebar({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: var_sp(2),
+                gap: "var(--sp-2)",
                 width: "100%",
                 height: 28,
                 padding: "0 var(--sp-3)",
@@ -147,10 +200,10 @@ function Sidebar({
                 fontFamily: "var(--font-data)",
                 color: isActive ? s.color : "var(--text-secondary)",
                 background: isActive ? "var(--bg-raised)" : "transparent",
-                transition: "background var(--transition-fast), color var(--transition-fast)",
+                transition:
+                  "background var(--transition-fast), color var(--transition-fast)",
               }}
             >
-              {/* Source dot */}
               <svg width="7" height="7" viewBox="0 0 7 7" style={{ flexShrink: 0 }}>
                 <circle
                   cx="3.5"
@@ -171,25 +224,45 @@ function Sidebar({
       </div>
 
       <div style={{ padding: "var(--sp-1) var(--sp-2)" }}>
-        {["Critical only", "Today", "Unread"].map((label) => (
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--sp-2)",
+            height: 28,
+            padding: "0 var(--sp-3)",
+            fontSize: 12,
+            color: unreadOnly ? "var(--text-primary)" : "var(--text-secondary)",
+            cursor: "pointer",
+            borderRadius: "var(--radius-md)",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={unreadOnly}
+            onChange={(e) => onUnreadOnlyChange(e.target.checked)}
+            style={{ accentColor: "var(--accent-primary)", cursor: "pointer" }}
+          />
+          Unread only
+        </label>
+
+        {(["Critical only", "Today"] as const).map((label) => (
           <label
             key={label}
             style={{
               display: "flex",
               alignItems: "center",
-              gap: var_sp(2),
+              gap: "var(--sp-2)",
               height: 28,
               padding: "0 var(--sp-3)",
               fontSize: 12,
-              color: "var(--text-secondary)",
-              cursor: "pointer",
+              color: "var(--text-muted)",
+              cursor: "not-allowed",
               borderRadius: "var(--radius-md)",
+              opacity: 0.5,
             }}
           >
-            <input
-              type="checkbox"
-              style={{ accentColor: "var(--accent-primary)", cursor: "pointer" }}
-            />
+            <input type="checkbox" disabled style={{ cursor: "not-allowed" }} />
             {label}
           </label>
         ))}
@@ -198,57 +271,15 @@ function Sidebar({
   );
 }
 
-/* ── Feed panel ───────────────────────────────────────────── */
+/* ── Detail panel (placeholder — fully implemented in Task 8) */
 
-function FeedPanel() {
-  return (
-    <main
-      className="feed-panel"
-      style={{
-        flex: 1,
-        minWidth: 320,
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* Empty state */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "var(--sp-3)",
-          padding: "var(--sp-6)",
-          color: "var(--text-muted)",
-        }}
-      >
-        <span style={{ fontSize: 36, color: "var(--text-muted)", lineHeight: 1 }}>
-          ◈
-        </span>
-        <p
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 14,
-            fontWeight: 600,
-            color: "var(--text-muted)",
-          }}
-        >
-          All clear, adventurer.
-        </p>
-        <p style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
-          Configure a plugin in Settings, then click Refresh.
-        </p>
-      </div>
-    </main>
-  );
-}
-
-/* ── Detail panel ─────────────────────────────────────────── */
-
-function DetailPanel() {
+function DetailPanel({
+  item,
+  onMarkRead,
+}: {
+  item: NexusItem | null;
+  onMarkRead: (id: string, read: boolean) => void;
+}) {
   return (
     <aside
       style={{
@@ -257,15 +288,69 @@ function DetailPanel() {
         background: "var(--bg-surface)",
         borderLeft: "1px solid var(--border-dim)",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "var(--text-muted)",
-        fontSize: 11,
-        padding: "var(--sp-4)",
-        textAlign: "center",
+        flexDirection: "column",
+        overflowY: "auto",
       }}
     >
-      Select an item to see details.
+      {item ? (
+        <div style={{ padding: "var(--sp-4)" }}>
+          <p
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              marginBottom: "var(--sp-2)",
+              lineHeight: 1.4,
+            }}
+          >
+            {item.title}
+          </p>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--sp-4)" }}>
+            {item.source_id} · {item.source}
+          </p>
+          <button
+            onClick={() => onMarkRead(item.id, !item.is_read)}
+            style={{
+              padding: "5px 12px",
+              border: "1px solid var(--border-mid)",
+              borderRadius: "var(--radius-md)",
+              background: "var(--bg-raised)",
+              color: "var(--text-secondary)",
+              fontSize: 11,
+              fontFamily: "var(--font-data)",
+              cursor: "pointer",
+            }}
+          >
+            {item.is_read ? "Mark unread" : "Mark read"}
+          </button>
+          <p
+            style={{
+              marginTop: "var(--sp-6)",
+              fontSize: 10,
+              color: "var(--text-muted)",
+              fontFamily: "var(--font-data)",
+            }}
+          >
+            Full detail panel — Task 8
+          </p>
+        </div>
+      ) : (
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 11,
+            color: "var(--text-muted)",
+            padding: "var(--sp-4)",
+            textAlign: "center",
+          }}
+        >
+          Select an item to see details.
+        </div>
+      )}
     </aside>
   );
 }
@@ -295,7 +380,7 @@ function SettingsPlaceholder({ onBack }: { onBack: () => void }) {
         Settings
       </h2>
       <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
-        Plugin configuration coming in Task 9.
+        Plugin configuration — Task 9.
       </p>
       <button
         onClick={onBack}
@@ -350,17 +435,20 @@ function IconButton({
   icon,
   label,
   active = false,
+  disabled = false,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
+  disabled?: boolean;
   onClick?: () => void;
 }) {
   return (
     <button
       aria-label={label}
       onClick={onClick}
+      disabled={disabled}
       style={{
         display: "flex",
         alignItems: "center",
@@ -371,20 +459,19 @@ function IconButton({
         color: active ? "var(--accent-primary)" : "var(--text-muted)",
         background: active ? "var(--bg-raised)" : "transparent",
         transition: "color var(--transition-fast), background var(--transition-fast)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.4 : 1,
       }}
       onMouseEnter={(e) => {
-        if (!active) (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)";
+        if (!active && !disabled)
+          (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)";
       }}
       onMouseLeave={(e) => {
-        if (!active) (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
+        if (!active && !disabled)
+          (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
       }}
     >
       {icon}
     </button>
   );
-}
-
-/* ── Utility: CSS variable shorthand for gap/padding values ── */
-function var_sp(n: 1 | 2 | 3 | 4 | 5 | 6): string {
-  return `var(--sp-${n})`;
 }
