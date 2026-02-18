@@ -21,7 +21,8 @@ impl Scheduler {
     }
 
     /// Poll a single plugin by ID, persist results to the database, and return the item count.
-    pub fn poll_plugin(&self, plugin_id: &str, db: &Database) -> Result<usize, String> {
+    /// `app` is used to fire native OS notifications for medium+ urgency items.
+    pub fn poll_plugin(&self, plugin_id: &str, db: &Database, app: &AppHandle) -> Result<usize, String> {
         let config = db
             .get_plugin_config(plugin_id)
             .map_err(|e| e.to_string())?
@@ -71,7 +72,7 @@ impl Scheduler {
             db.upsert_item(&item).map_err(|e| e.to_string())?;
         }
 
-        // Insert notifications.
+        // Insert notifications and send native OS notifications for medium+ urgency.
         for pn in &result.notifications {
             let notif = Notification {
                 id: Uuid::new_v4().to_string(),
@@ -82,6 +83,11 @@ impl Scheduler {
                 created_at: now,
             };
             db.insert_notification(&notif).map_err(|e| e.to_string())?;
+
+            // Find the corresponding item title to use as the notification heading.
+            if let Some(item) = result.items.iter().find(|i| i.id == pn.item_id) {
+                crate::notifications::send_native_notification(app, &notif, &item.title);
+            }
         }
 
         // Update last_poll_at and clear error state.
@@ -107,7 +113,7 @@ pub fn start_polling(app: AppHandle, db: Arc<Mutex<Database>>, plugins_dir: Path
             interval.tick().await;
 
             if let Ok(db_ref) = db.lock() {
-                match scheduler.poll_plugin("jira", &db_ref) {
+                match scheduler.poll_plugin("jira", &db_ref, &app) {
                     Ok(count) => {
                         println!("[scheduler] jira: fetched {} items", count);
                         let _ = app.emit("items-updated", "jira");

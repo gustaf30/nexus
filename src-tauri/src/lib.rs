@@ -1,6 +1,7 @@
 mod commands;
 mod db;
 mod models;
+mod notifications;
 mod plugin_runtime;
 mod scheduler;
 
@@ -14,6 +15,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let app_dir = app
                 .path()

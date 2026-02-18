@@ -57,8 +57,12 @@ pub fn save_plugin_config(state: State<AppState>, config: PluginConfig) -> Resul
 }
 
 #[tauri::command]
-pub fn refresh_plugin(state: State<AppState>, plugin_id: String) -> Result<usize, String> {
+pub fn refresh_plugin(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    plugin_id: String,
+) -> Result<usize, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let scheduler = Scheduler::new(state.plugins_dir.clone());
-    scheduler.poll_plugin(&plugin_id, &db)
+    scheduler.poll_plugin(&plugin_id, &db, &app)
 }
