@@ -1,11 +1,14 @@
-use std::sync::Mutex;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use tauri::State;
 
 use crate::db::Database;
 use crate::models::{NexusItem, Notification, PluginConfig};
+use crate::scheduler::Scheduler;
 
 pub struct AppState {
-    pub db: Mutex<Database>,
+    pub db: Arc<Mutex<Database>>,
+    pub plugins_dir: PathBuf,
 }
 
 #[tauri::command]
@@ -51,4 +54,11 @@ pub fn get_plugin_config(
 pub fn save_plugin_config(state: State<AppState>, config: PluginConfig) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.upsert_plugin_config(&config).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn refresh_plugin(state: State<AppState>, plugin_id: String) -> Result<usize, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let scheduler = Scheduler::new(state.plugins_dir.clone());
+    scheduler.poll_plugin(&plugin_id, &db)
 }

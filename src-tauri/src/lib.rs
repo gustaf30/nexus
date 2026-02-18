@@ -2,6 +2,9 @@ mod commands;
 mod db;
 mod models;
 mod plugin_runtime;
+mod scheduler;
+
+use std::sync::{Arc, Mutex};
 
 use commands::AppState;
 use db::Database;
@@ -19,12 +22,27 @@ pub fn run() {
             std::fs::create_dir_all(&app_dir).expect("failed to create app data dir");
 
             let db_path = app_dir.join("nexus-hub.db");
-            let db = Database::new(db_path).expect("failed to init database");
-            db.seed_default_weights().expect("failed to seed default weights");
+            let db = Arc::new(Mutex::new(
+                Database::new(db_path).expect("failed to init database"),
+            ));
+            db.lock()
+                .unwrap()
+                .seed_default_weights()
+                .expect("failed to seed default weights");
+
+            let plugins_dir = app
+                .path()
+                .resource_dir()
+                .expect("failed to get resource dir")
+                .join("plugins");
 
             app.manage(AppState {
-                db: std::sync::Mutex::new(db),
+                db: Arc::clone(&db),
+                plugins_dir: plugins_dir.clone(),
             });
+
+            scheduler::start_polling(app.handle().clone(), Arc::clone(&db), plugins_dir);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -34,6 +52,7 @@ pub fn run() {
             commands::dismiss_notification,
             commands::get_plugin_config,
             commands::save_plugin_config,
+            commands::refresh_plugin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
