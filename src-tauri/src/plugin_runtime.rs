@@ -100,3 +100,115 @@ console.log(result);"#
 pub fn parse_plugin_result(json: &str) -> Result<PluginResult, String> {
     serde_json::from_str(json).map_err(|e| format!("Failed to parse plugin result: {}", e))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_valid_json() {
+        let json = r#"{
+            "items": [{
+                "id": "jira-TEST-1",
+                "source": "jira",
+                "sourceId": "TEST-1",
+                "type": "ticket",
+                "title": "Fix login bug",
+                "summary": "Users cannot log in",
+                "url": "https://jira.example.com/browse/TEST-1",
+                "author": "alice",
+                "timestamp": 1000,
+                "metadata": {},
+                "tags": ["bug"]
+            }],
+            "notifications": [{
+                "itemId": "jira-TEST-1",
+                "reason": "assigned",
+                "urgency": "medium"
+            }]
+        }"#;
+        let result = parse_plugin_result(json).unwrap();
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.notifications.len(), 1);
+        assert_eq!(result.items[0].id, "jira-TEST-1");
+        assert_eq!(result.items[0].source_id, "TEST-1");
+        assert_eq!(result.items[0].item_type, "ticket");
+        assert_eq!(result.items[0].title, "Fix login bug");
+        assert_eq!(result.items[0].summary, Some("Users cannot log in".to_string()));
+    }
+
+    #[test]
+    fn parse_empty_arrays() {
+        let json = r#"{"items":[],"notifications":[]}"#;
+        let result = parse_plugin_result(json).unwrap();
+        assert!(result.items.is_empty());
+        assert!(result.notifications.is_empty());
+    }
+
+    #[test]
+    fn parse_invalid_json() {
+        let result = parse_plugin_result("not json at all");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to parse plugin result"));
+    }
+
+    #[test]
+    fn parse_missing_items() {
+        let json = r#"{"notifications":[]}"#;
+        let result = parse_plugin_result(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_missing_notifications() {
+        let json = r#"{"items":[]}"#;
+        let result = parse_plugin_result(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_with_notifications() {
+        let json = r#"{
+            "items": [],
+            "notifications": [{
+                "itemId": "jira-PROJ-99",
+                "reason": "mentioned_in_comment",
+                "urgency": "high"
+            }]
+        }"#;
+        let result = parse_plugin_result(json).unwrap();
+        assert_eq!(result.notifications.len(), 1);
+        // Verify serde rename: itemId JSON -> item_id Rust field
+        assert_eq!(result.notifications[0].item_id, "jira-PROJ-99");
+        assert_eq!(result.notifications[0].reason, "mentioned_in_comment");
+        assert_eq!(result.notifications[0].urgency, "high");
+    }
+
+    #[test]
+    fn parse_with_metadata() {
+        let json = r#"{
+            "items": [{
+                "id": "jira-META-1",
+                "source": "jira",
+                "sourceId": "META-1",
+                "type": "ticket",
+                "title": "Metadata test",
+                "summary": null,
+                "url": "https://example.com",
+                "author": null,
+                "timestamp": 2000,
+                "metadata": {"status": "in_progress", "sprint": 42, "labels": ["backend", "api"]},
+                "tags": ["infra"]
+            }],
+            "notifications": []
+        }"#;
+        let result = parse_plugin_result(json).unwrap();
+        let meta = &result.items[0].metadata;
+        assert!(meta.is_object());
+        assert_eq!(meta["status"], "in_progress");
+        assert_eq!(meta["sprint"], 42);
+        assert!(meta["labels"].is_array());
+        assert_eq!(meta["labels"][0], "backend");
+        assert_eq!(meta["labels"][1], "api");
+    }
+}
