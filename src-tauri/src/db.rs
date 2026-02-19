@@ -16,6 +16,9 @@ impl Database {
     }
 
     fn run_migrations(&self) -> Result<()> {
+        // Enable foreign key enforcement (off by default in SQLite).
+        self.conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+
         self.conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS items (
@@ -39,7 +42,7 @@ impl Database {
 
             CREATE TABLE IF NOT EXISTS notifications (
                 id TEXT PRIMARY KEY,
-                item_id TEXT NOT NULL REFERENCES items(id),
+                item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
                 reason TEXT NOT NULL,
                 urgency TEXT NOT NULL,
                 is_dismissed INTEGER DEFAULT 0,
@@ -78,6 +81,52 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_notifications_dismissed ON notifications(is_dismissed);
         ",
         )?;
+
+        // Migration: recreate notifications table with ON DELETE CASCADE if it exists
+        // without it. This handles existing dev databases created before the CASCADE was added.
+        self.migrate_notifications_cascade()?;
+
+        Ok(())
+    }
+
+    /// Recreate the notifications table with ON DELETE CASCADE if the FK lacks it.
+    fn migrate_notifications_cascade(&self) -> Result<()> {
+        // Check if the table's FK already has CASCADE by inspecting the schema SQL.
+        let schema: String = self
+            .conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='notifications'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
+
+        if schema.contains("ON DELETE CASCADE") {
+            return Ok(()); // already migrated
+        }
+
+        // Recreate via the standard SQLite migration pattern: rename → create → copy → drop.
+        self.conn.execute_batch(
+            "
+            ALTER TABLE notifications RENAME TO _notifications_old;
+
+            CREATE TABLE notifications (
+                id TEXT PRIMARY KEY,
+                item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+                reason TEXT NOT NULL,
+                urgency TEXT NOT NULL,
+                is_dismissed INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL
+            );
+
+            INSERT INTO notifications SELECT * FROM _notifications_old;
+            DROP TABLE _notifications_old;
+
+            CREATE INDEX IF NOT EXISTS idx_notifications_urgency ON notifications(urgency);
+            CREATE INDEX IF NOT EXISTS idx_notifications_dismissed ON notifications(is_dismissed);
+        ",
+        )?;
+
         Ok(())
     }
 
@@ -259,6 +308,28 @@ impl Database {
             ],
         )?;
         Ok(())
+    }
+
+    /// Return full configs for enabled plugins with credentials.
+    pub fn get_enabled_plugin_configs(&self) -> Result<Vec<PluginConfig>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT * FROM plugin_config WHERE is_enabled = 1 AND credentials IS NOT NULL",
+        )?;
+        let configs = stmt
+            .query_map([], |row| {
+                Ok(PluginConfig {
+                    plugin_id: row.get(0)?,
+                    is_enabled: row.get::<_, i32>(1)? != 0,
+                    credentials: row.get(2)?,
+                    poll_interval_secs: row.get(3)?,
+                    last_poll_at: row.get(4)?,
+                    last_error: row.get(5)?,
+                    error_count: row.get(6)?,
+                    settings: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<PluginConfig>>>()?;
+        Ok(configs)
     }
 
     // -- Heuristic Weights --

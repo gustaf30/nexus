@@ -45,6 +45,44 @@ export default function App() {
     loadAllConfigs();
   }, []);
 
+  /* ── Disable browser context menu (desktop app) ── */
+  useEffect(() => {
+    const prevent = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener("contextmenu", prevent);
+    return () => document.removeEventListener("contextmenu", prevent);
+  }, []);
+
+  /* ── Global keyboard shortcuts ── */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+
+      // Ctrl+R — refresh plugins
+      if (mod && e.key === "r") {
+        e.preventDefault();
+        handleRefresh();
+      }
+
+      // Ctrl+, — toggle settings
+      if (mod && e.key === ",") {
+        e.preventDefault();
+        setView((v) => (v === "settings" ? "dashboard" : "settings"));
+      }
+
+      // Escape — deselect item or close settings
+      if (e.key === "Escape") {
+        if (view === "settings") {
+          setView("dashboard");
+        } else {
+          setSelectedItem(null);
+        }
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [view, source, loading]);
+
   // Reload configs when returning from settings so status bar updates immediately.
   useEffect(() => {
     if (view === "dashboard") loadAllConfigs();

@@ -42,7 +42,12 @@ function adfToText(node: AdfNode | null | undefined): string {
 
 // Entry point — called by Rust plugin runtime
 export async function fetch(configJson: string): Promise<string> {
-  const config: JiraConfig = JSON.parse(configJson);
+  let config: JiraConfig;
+  try {
+    config = JSON.parse(configJson);
+  } catch (e) {
+    throw new Error(`Invalid Jira credentials JSON: ${e instanceof Error ? e.message : e}`);
+  }
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
   const auth = btoa(`${config.email}:${config.apiToken}`);
 
@@ -134,7 +139,12 @@ export async function fetch(configJson: string): Promise<string> {
 
 // Validate connection — called by Settings panel before saving credentials
 export async function validateConnection(configJson: string): Promise<string> {
-  const config: JiraConfig = JSON.parse(configJson);
+  let config: JiraConfig;
+  try {
+    config = JSON.parse(configJson);
+  } catch (e) {
+    throw new Error(`Invalid Jira credentials JSON: ${e instanceof Error ? e.message : e}`);
+  }
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
   const auth = btoa(`${config.email}:${config.apiToken}`);
 

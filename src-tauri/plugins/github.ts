@@ -55,7 +55,12 @@ function repoFromUrl(repositoryUrl: string): string {
 }
 
 export async function fetch(configJson: string): Promise<string> {
-  const config: GitHubConfig = JSON.parse(configJson);
+  let config: GitHubConfig;
+  try {
+    config = JSON.parse(configJson);
+  } catch (e) {
+    throw new Error(`Invalid GitHub credentials JSON: ${e instanceof Error ? e.message : e}`);
+  }
   const { token } = config;
 
   const now = Math.floor(Date.now() / 1000);
@@ -76,13 +81,13 @@ export async function fetch(configJson: string): Promise<string> {
   const seen = new Set<number>();
   const all: Array<{ issue: GitHubIssue; isReviewRequest: boolean }> = [];
 
-  for (const issue of reviewPRs.items) {
+  for (const issue of (reviewPRs.items ?? [])) {
     if (!seen.has(issue.id)) {
       seen.add(issue.id);
       all.push({ issue, isReviewRequest: true });
     }
   }
-  for (const issue of assignedIssues.items) {
+  for (const issue of (assignedIssues.items ?? [])) {
     if (!seen.has(issue.id)) {
       seen.add(issue.id);
       all.push({ issue, isReviewRequest: false });
@@ -142,7 +147,12 @@ export async function fetch(configJson: string): Promise<string> {
 }
 
 export async function validateConnection(configJson: string): Promise<string> {
-  const config: GitHubConfig = JSON.parse(configJson);
+  let config: GitHubConfig;
+  try {
+    config = JSON.parse(configJson);
+  } catch (e) {
+    throw new Error(`Invalid GitHub credentials JSON: ${e instanceof Error ? e.message : e}`);
+  }
   try {
     await githubGet(config.token, "/user");
     return JSON.stringify({ ok: true, status: 200 });

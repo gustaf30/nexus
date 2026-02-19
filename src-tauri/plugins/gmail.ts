@@ -111,7 +111,12 @@ function hasAttachment(part: MessagePart): boolean {
 }
 
 export async function fetch(configJson: string): Promise<string> {
-  const config: GmailConfig = JSON.parse(configJson);
+  let config: GmailConfig;
+  try {
+    config = JSON.parse(configJson);
+  } catch (e) {
+    throw new Error(`Invalid Gmail credentials JSON: ${e instanceof Error ? e.message : e}`);
+  }
   const vipSet = new Set((config.vipSenders ?? []).map((s) => s.toLowerCase()));
 
   const accessToken = await getAccessToken(config);
@@ -135,8 +140,13 @@ export async function fetch(configJson: string): Promise<string> {
     const batch = messageList.slice(i, i + 5);
     const batchResults = await Promise.all(
       batch.map(async (m): Promise<GmailMessage> => {
+        const params = new URLSearchParams();
+        params.append("format", "metadata");
+        params.append("metadataHeaders", "From");
+        params.append("metadataHeaders", "Subject");
+        params.append("metadataHeaders", "Date");
         const res = await globalThis.fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From,Subject,Date`,
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?${params}`,
           { headers: authHeader },
         );
         if (!res.ok) throw new Error(`Gmail message fetch error: ${res.status}`);
@@ -221,7 +231,12 @@ export async function fetch(configJson: string): Promise<string> {
 }
 
 export async function validateConnection(configJson: string): Promise<string> {
-  const config: GmailConfig = JSON.parse(configJson);
+  let config: GmailConfig;
+  try {
+    config = JSON.parse(configJson);
+  } catch (e) {
+    throw new Error(`Invalid Gmail credentials JSON: ${e instanceof Error ? e.message : e}`);
+  }
   try {
     const accessToken = await getAccessToken(config);
     const res = await globalThis.fetch(

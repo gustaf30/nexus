@@ -3,7 +3,9 @@ dist/
 .env
 .env.*
 
-# Claude / local docs
-./claude/
+# Claude
+.claude/
 CLAUDE.md
+
+# Local
 docs/

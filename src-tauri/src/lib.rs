@@ -16,26 +16,29 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(|app| {
             let app_dir = app
                 .path()
                 .app_data_dir()
-                .expect("failed to get app data dir");
-            std::fs::create_dir_all(&app_dir).expect("failed to create app data dir");
+                .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+            std::fs::create_dir_all(&app_dir)
+                .map_err(|e| format!("Failed to create app data dir: {}", e))?;
 
             let db_path = app_dir.join("nexus-hub.db");
             let db = Arc::new(Mutex::new(
-                Database::new(db_path).expect("failed to init database"),
+                Database::new(db_path)
+                    .map_err(|e| format!("Failed to init database: {}", e))?,
             ));
             db.lock()
-                .unwrap()
+                .map_err(|e| format!("DB lock poisoned during setup: {}", e))?
                 .seed_default_weights()
-                .expect("failed to seed default weights");
+                .map_err(|e| format!("Failed to seed default weights: {}", e))?;
 
             let plugins_dir = app
                 .path()
                 .resource_dir()
-                .expect("failed to get resource dir")
+                .map_err(|e| format!("Failed to get resource dir: {}", e))?
                 .join("plugins");
 
             app.manage(AppState {
