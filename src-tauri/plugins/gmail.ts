@@ -50,8 +50,8 @@ interface GmailMessage {
   labelIds: string[];
   snippet: string;
   internalDate: string; // ms since epoch as string
-  payload: {
-    headers: MessageHeader[];
+  payload?: {
+    headers?: MessageHeader[];
     mimeType: string;
     parts?: MessagePart[];
     body?: { size: number };
@@ -89,7 +89,8 @@ async function getAccessToken(config: GmailConfig): Promise<string> {
   return data.access_token;
 }
 
-function getHeader(headers: MessageHeader[], name: string): string {
+function getHeader(headers: MessageHeader[] | undefined, name: string): string {
+  if (!headers) return "";
   return headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? "";
 }
 
@@ -148,7 +149,7 @@ export async function fetch(configJson: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
 
   const items = messages.map((msg) => {
-    const headers = msg.payload.headers;
+    const headers = msg.payload?.headers;
     const from = getHeader(headers, "From");
     const subject = getHeader(headers, "Subject") || "(no subject)";
     const date = getHeader(headers, "Date");
@@ -159,7 +160,7 @@ export async function fetch(configJson: string): Promise<string> {
     const fromEmail = (from.match(/<([^>]+)>/) ?? [, from])[1]?.toLowerCase() ?? from.toLowerCase();
     const fromName = from.replace(/<[^>]+>/, "").trim() || fromEmail;
 
-    const attachment = msg.payload.parts ? msg.payload.parts.some(hasAttachment) : false;
+    const attachment = msg.payload?.parts ? msg.payload.parts.some(hasAttachment) : false;
 
     return {
       id: `gmail-${msg.id}`,

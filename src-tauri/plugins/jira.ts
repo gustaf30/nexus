@@ -21,7 +21,7 @@ interface JiraIssue {
     summary: string;
     description: AdfNode | null; // ADF object in API v3, not a plain string
     status: { name: string };
-    priority: { name: string; id: string };
+    priority: { name: string; id: string } | null;
     assignee: { displayName: string; emailAddress: string } | null;
     reporter: { displayName: string } | null;
     duedate: string | null;
@@ -85,8 +85,8 @@ export async function fetch(configJson: string): Promise<string> {
     timestamp: Math.floor(new Date(issue.fields.updated).getTime() / 1000),
     metadata: {
       status: issue.fields.status.name,
-      priority: issue.fields.priority.name,
-      priorityId: issue.fields.priority.id,
+      priority: issue.fields.priority?.name ?? "None",
+      priorityId: issue.fields.priority?.id ?? "",
       duedate: issue.fields.duedate,
       assignee: issue.fields.assignee?.displayName ?? null,
     },
@@ -101,7 +101,7 @@ export async function fetch(configJson: string): Promise<string> {
       signals.push({ reason: "assigned_to_you", weight: 3 });
 
       // Signal: high priority (P1 or Blocker — priorityId "1" or "2")
-      const pId = issue.fields.priority.id;
+      const pId = issue.fields.priority?.id;
       if (pId === "1" || pId === "2") {
         signals.push({ reason: "priority_p1_blocker", weight: 4 });
       }
