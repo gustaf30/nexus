@@ -7,12 +7,19 @@ interface JiraConfig {
   apiToken: string;  // Jira API token
 }
 
+// Jira REST API v3 returns description as Atlassian Document Format (ADF), not plain text.
+interface AdfNode {
+  type: string;
+  text?: string;
+  content?: AdfNode[];
+}
+
 interface JiraIssue {
   id: string;
   key: string;
   fields: {
     summary: string;
-    description: string | null;
+    description: AdfNode | null; // ADF object in API v3, not a plain string
     status: { name: string };
     priority: { name: string; id: string };
     assignee: { displayName: string; emailAddress: string } | null;
@@ -25,19 +32,34 @@ interface JiraIssue {
   };
 }
 
+/** Recursively extract plain text from an ADF node tree. */
+function adfToText(node: AdfNode | null | undefined): string {
+  if (!node) return "";
+  if (node.type === "text" && node.text) return node.text;
+  if (node.content) return node.content.map(adfToText).join("");
+  return "";
+}
+
 // Entry point — called by Rust plugin runtime
 export async function fetch(configJson: string): Promise<string> {
   const config: JiraConfig = JSON.parse(configJson);
   const auth = btoa(`${config.email}:${config.apiToken}`);
 
   const jql = "assignee = currentUser() AND status != Done ORDER BY updated DESC";
-  const url = `${config.baseUrl}/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=50&fields=summary,description,status,priority,assignee,reporter,duedate,updated,created,labels,comment`;
 
-  const response = await globalThis.fetch(url, {
+  // GET /rest/api/3/search was permanently removed (410) in newer Jira Cloud.
+  // Use POST /rest/api/3/issue/search instead.
+  const response = await globalThis.fetch(`${config.baseUrl}/rest/api/3/issue/search`, {
+    method: "POST",
     headers: {
       "Authorization": `Basic ${auth}`,
       "Content-Type": "application/json",
     },
+    body: JSON.stringify({
+      jql,
+      maxResults: 50,
+      fields: ["summary", "description", "status", "priority", "assignee", "reporter", "duedate", "updated", "created", "labels", "comment"],
+    }),
   });
 
   if (!response.ok) {
@@ -56,7 +78,7 @@ export async function fetch(configJson: string): Promise<string> {
     type: "ticket",
     title: `[${issue.key}] ${issue.fields.summary}`,
     summary: issue.fields.description
-      ? issue.fields.description.substring(0, 200)
+      ? adfToText(issue.fields.description).substring(0, 200) || null
       : null,
     url: `${config.baseUrl}/browse/${issue.key}`,
     author: issue.fields.reporter?.displayName ?? null,
