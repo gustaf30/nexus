@@ -17,27 +17,7 @@ The interface follows a Dark Scriptorium aesthetic: dense, keyboard-first, with 
 
 ## Layout
 
-```
-┌─────────────────────────────────────────────────────────────────┐  titlebar (36px)
-│  ◈ NEXUS HUB                           [3] ⚙  ↻               │
-├──────────────┬──────────────────────────┬────────────────────────┤
-│              │                          │                        │
-│  SIDEBAR     │  FEED                    │  DETAIL                │
-│  180px fixed │  flex: 1 (min 320px)    │  280px fixed           │
-│              │                          │                        │
-│  SOURCES     │  ● [JIRA] PROJ-123       │  PROJ-123              │
-│  ◉ All  47   │    Critical payment bug  │  Critical bug in pay…  │
-│  ○ Jira 12   │                          │  ──────────────────    │
-│  ○ Gmail  8  │  ● [GH] PR #456          │  SOURCE   Jira         │
-│  ○ GitHub 8  │    Review requested      │  PRIORITY P1 Blocker   │
-│              │                          │  ASSIGNED @you         │
-│  FILTERS     │  ○ [GMAIL] Invoice…      │  ──────────────────    │
-│  ☐ Critical  │    Re: Q1 report         │  [Open in Jira ↗]      │
-│  ☐ Unread    │                          │                        │
-├──────────────┴──────────────────────────┴────────────────────────┤
-│  ◷ Last sync: 14:32  ·  Next: 14:47  ·  3 plugins active        │  status bar (24px)
-└─────────────────────────────────────────────────────────────────┘
-```
+<img width="1202" height="797" alt="image" src="https://github.com/user-attachments/assets/32ed6a32-ee52-4088-b75a-56275e1823ba" />
 
 ---
 
