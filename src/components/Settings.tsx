@@ -21,6 +21,17 @@ interface JiraCredentials {
   apiToken: string;
 }
 
+interface GitHubCredentials {
+  token: string;
+}
+
+interface GmailCredentials {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  vipSenders: string; // comma-separated in the form
+}
+
 /* ── Helpers ─────────────────────────────────────────────── */
 
 function timeAgo(ts: number): string {
@@ -39,12 +50,14 @@ function FormField({
   value,
   onChange,
   placeholder,
+  hint,
 }: {
   label: string;
   type: string;
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
+  hint?: string;
 }) {
   const [focused, setFocused] = useState(false);
 
@@ -87,37 +100,192 @@ function FormField({
             "border-color var(--transition-fast), box-shadow var(--transition-fast)",
         }}
       />
+      {hint && (
+        <p style={{ marginTop: 4, fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-data)" }}>
+          {hint}
+        </p>
+      )}
     </div>
   );
 }
 
-/* ── Settings ────────────────────────────────────────────── */
+function PluginCard({
+  accentVar,
+  label,
+  lastPoll,
+  lastError,
+  children,
+  onSave,
+  saving,
+  message,
+}: {
+  accentVar: string;
+  label: string;
+  lastPoll: number | null;
+  lastError: string | null;
+  children: React.ReactNode;
+  onSave: () => void;
+  saving: boolean;
+  message: { text: string; ok: boolean } | null;
+}) {
+  return (
+    <div
+      style={{
+        maxWidth: 480,
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-dim)",
+        borderRadius: "var(--radius-md)",
+        overflow: "hidden",
+        marginBottom: "var(--sp-4)",
+      }}
+    >
+      {/* Card header */}
+      <div
+        style={{
+          padding: "var(--sp-3) var(--sp-4)",
+          borderBottom: "1px solid var(--border-dim)",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--sp-2)",
+        }}
+      >
+        <svg width="7" height="7" viewBox="0 0 7 7">
+          <circle cx="3.5" cy="3.5" r="3.5" fill={`var(${accentVar})`} />
+        </svg>
+        <span
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: 13,
+            fontWeight: 700,
+            color: `var(${accentVar})`,
+          }}
+        >
+          {label}
+        </span>
+        {lastPoll !== null && (
+          <span
+            style={{
+              marginLeft: "auto",
+              fontFamily: "var(--font-data)",
+              fontSize: 10,
+              color: "var(--text-muted)",
+            }}
+          >
+            Last sync {timeAgo(lastPoll)}
+          </span>
+        )}
+      </div>
 
-interface Props {
-  onBack: () => void;
+      {/* Form fields */}
+      <div
+        style={{
+          padding: "var(--sp-4)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--sp-3)",
+        }}
+      >
+        {children}
+      </div>
+
+      {/* Last error */}
+      {lastError && (
+        <div
+          style={{
+            margin: "0 var(--sp-4) var(--sp-3)",
+            padding: "var(--sp-2) var(--sp-3)",
+            background: "var(--urgency-high-bg)",
+            border: "1px solid var(--urgency-high)",
+            borderRadius: "var(--radius-md)",
+          }}
+        >
+          <p
+            style={{
+              fontFamily: "var(--font-data)",
+              fontSize: 11,
+              color: "var(--urgency-high)",
+              lineHeight: 1.5,
+            }}
+          >
+            Last error: {lastError}
+          </p>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div
+        style={{
+          padding: "var(--sp-3) var(--sp-4)",
+          borderTop: "1px solid var(--border-dim)",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--sp-3)",
+        }}
+      >
+        <button
+          onClick={onSave}
+          disabled={saving}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--sp-2)",
+            padding: "7px 20px",
+            borderRadius: "var(--radius-md)",
+            background: "var(--accent-primary)",
+            color: "var(--text-inverse)",
+            border: "none",
+            fontSize: 12,
+            fontFamily: "var(--font-data)",
+            fontWeight: 600,
+            cursor: saving ? "not-allowed" : "pointer",
+            opacity: saving ? 0.7 : 1,
+            transition: "background var(--transition-fast)",
+          }}
+          onMouseEnter={(e) => {
+            if (!saving)
+              (e.currentTarget as HTMLButtonElement).style.background = "var(--accent-hover)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--accent-primary)";
+          }}
+        >
+          <Save size={12} />
+          {saving ? "Saving…" : "Save"}
+        </button>
+
+        {message && (
+          <p
+            style={{
+              fontFamily: "var(--font-data)",
+              fontSize: 11,
+              color: message.ok ? "var(--accent-primary)" : "var(--urgency-high)",
+            }}
+          >
+            {message.text}
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
-export function Settings({ onBack }: Props) {
-  const [baseUrl, setBaseUrl]         = useState("");
-  const [email, setEmail]             = useState("");
-  const [apiToken, setApiToken]       = useState("");
+/* ── Jira section ────────────────────────────────────────── */
+
+function JiraSection() {
+  const [baseUrl, setBaseUrl]       = useState("");
+  const [email, setEmail]           = useState("");
+  const [apiToken, setApiToken]     = useState("");
   const [pollInterval, setPollInterval] = useState(600);
-  const [saving, setSaving]           = useState(false);
-  const [message, setMessage]         = useState<{ text: string; ok: boolean } | null>(null);
+  const [saving, setSaving]         = useState(false);
+  const [message, setMessage]       = useState<{ text: string; ok: boolean } | null>(null);
+  const [lastPoll, setLastPoll]     = useState<number | null>(null);
+  const [lastError, setLastError]   = useState<string | null>(null);
 
-  // Preserved from loaded config — not exposed in form, kept on save.
-  const [lastPoll, setLastPoll]       = useState<number | null>(null);
-  const [lastError, setLastError]     = useState<string | null>(null);
-
-  useEffect(() => {
-    loadConfig();
-  }, []);
+  useEffect(() => { loadConfig(); }, []);
 
   async function loadConfig() {
     try {
-      const config = await invoke<PluginConfig | null>("get_plugin_config", {
-        pluginId: "jira",
-      });
+      const config = await invoke<PluginConfig | null>("get_plugin_config", { pluginId: "jira" });
       if (config?.credentials) {
         const creds: JiraCredentials = JSON.parse(config.credentials);
         setBaseUrl(creds.baseUrl ?? "");
@@ -138,22 +306,19 @@ export function Settings({ onBack }: Props) {
     setSaving(true);
     setMessage(null);
     try {
-      const credentials: JiraCredentials = {
-        baseUrl: baseUrl.trim(),
-        email: email.trim(),
-        apiToken,
-      };
-      const config: PluginConfig = {
-        plugin_id: "jira",
-        is_enabled: true,
-        credentials: JSON.stringify(credentials),
-        poll_interval_secs: pollInterval,
-        last_poll_at: lastPoll,   // preserve existing sync history
-        last_error: null,         // clear error on explicit save
-        error_count: 0,
-        settings: null,
-      };
-      await invoke("save_plugin_config", { config });
+      const credentials: JiraCredentials = { baseUrl: baseUrl.trim(), email: email.trim(), apiToken };
+      await invoke("save_plugin_config", {
+        config: {
+          plugin_id: "jira",
+          is_enabled: true,
+          credentials: JSON.stringify(credentials),
+          poll_interval_secs: pollInterval,
+          last_poll_at: lastPoll,
+          last_error: null,
+          error_count: 0,
+          settings: null,
+        } satisfies PluginConfig,
+      });
       setLastError(null);
       setMessage({ text: "Saved.", ok: true });
     } catch (e) {
@@ -163,6 +328,227 @@ export function Settings({ onBack }: Props) {
     }
   }
 
+  return (
+    <PluginCard
+      accentVar="--source-jira"
+      label="Jira Plugin"
+      lastPoll={lastPoll}
+      lastError={lastError}
+      onSave={saveConfig}
+      saving={saving}
+      message={message}
+    >
+      <FormField label="Base URL" type="text" value={baseUrl} onChange={setBaseUrl} placeholder="https://company.atlassian.net" />
+      <FormField label="Email" type="email" value={email} onChange={setEmail} placeholder="you@company.com" />
+      <FormField label="API Token" type="password" value={apiToken} onChange={setApiToken} placeholder="••••••••••••••••••••" />
+      <FormField
+        label="Poll Interval (seconds)"
+        type="number"
+        value={String(pollInterval)}
+        onChange={(v) => setPollInterval(Math.max(60, Number(v)))}
+        placeholder="600"
+      />
+    </PluginCard>
+  );
+}
+
+/* ── GitHub section ──────────────────────────────────────── */
+
+function GitHubSection() {
+  const [token, setToken]           = useState("");
+  const [saving, setSaving]         = useState(false);
+  const [message, setMessage]       = useState<{ text: string; ok: boolean } | null>(null);
+  const [lastPoll, setLastPoll]     = useState<number | null>(null);
+  const [lastError, setLastError]   = useState<string | null>(null);
+
+  useEffect(() => { loadConfig(); }, []);
+
+  async function loadConfig() {
+    try {
+      const config = await invoke<PluginConfig | null>("get_plugin_config", { pluginId: "github" });
+      if (config?.credentials) {
+        const creds: GitHubCredentials = JSON.parse(config.credentials);
+        setToken(creds.token ?? "");
+      }
+      if (config) {
+        setLastPoll(config.last_poll_at);
+        setLastError(config.last_error);
+      }
+    } catch (e) {
+      console.error("Failed to load GitHub config:", e);
+    }
+  }
+
+  async function saveConfig() {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const credentials: GitHubCredentials = { token: token.trim() };
+      await invoke("save_plugin_config", {
+        config: {
+          plugin_id: "github",
+          is_enabled: true,
+          credentials: JSON.stringify(credentials),
+          poll_interval_secs: 600,
+          last_poll_at: lastPoll,
+          last_error: null,
+          error_count: 0,
+          settings: null,
+        } satisfies PluginConfig,
+      });
+      setLastError(null);
+      setMessage({ text: "Saved.", ok: true });
+    } catch (e) {
+      setMessage({ text: String(e), ok: false });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <PluginCard
+      accentVar="--source-github"
+      label="GitHub Plugin"
+      lastPoll={lastPoll}
+      lastError={lastError}
+      onSave={saveConfig}
+      saving={saving}
+      message={message}
+    >
+      <FormField
+        label="Personal Access Token"
+        type="password"
+        value={token}
+        onChange={setToken}
+        placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+        hint="Requires scopes: repo, read:user, notifications"
+      />
+    </PluginCard>
+  );
+}
+
+/* ── Gmail section ───────────────────────────────────────── */
+
+function GmailSection() {
+  const [clientId, setClientId]         = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [refreshToken, setRefreshToken] = useState("");
+  const [vipSenders, setVipSenders]     = useState("");
+  const [saving, setSaving]             = useState(false);
+  const [message, setMessage]           = useState<{ text: string; ok: boolean } | null>(null);
+  const [lastPoll, setLastPoll]         = useState<number | null>(null);
+  const [lastError, setLastError]       = useState<string | null>(null);
+
+  useEffect(() => { loadConfig(); }, []);
+
+  async function loadConfig() {
+    try {
+      const config = await invoke<PluginConfig | null>("get_plugin_config", { pluginId: "gmail" });
+      if (config?.credentials) {
+        const creds: GmailCredentials = JSON.parse(config.credentials);
+        setClientId(creds.clientId ?? "");
+        setClientSecret(creds.clientSecret ?? "");
+        setRefreshToken(creds.refreshToken ?? "");
+        setVipSenders(creds.vipSenders ?? "");
+      }
+      if (config) {
+        setLastPoll(config.last_poll_at);
+        setLastError(config.last_error);
+      }
+    } catch (e) {
+      console.error("Failed to load Gmail config:", e);
+    }
+  }
+
+  async function saveConfig() {
+    setSaving(true);
+    setMessage(null);
+    try {
+      // Store vipSenders as a JSON array, parsed from the comma-separated input
+      const vipArray = vipSenders
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+
+      const credentials = {
+        clientId: clientId.trim(),
+        clientSecret: clientSecret.trim(),
+        refreshToken: refreshToken.trim(),
+        vipSenders: vipArray,
+      };
+      await invoke("save_plugin_config", {
+        config: {
+          plugin_id: "gmail",
+          is_enabled: true,
+          credentials: JSON.stringify(credentials),
+          poll_interval_secs: 600,
+          last_poll_at: lastPoll,
+          last_error: null,
+          error_count: 0,
+          settings: null,
+        } satisfies PluginConfig,
+      });
+      setLastError(null);
+      setMessage({ text: "Saved.", ok: true });
+    } catch (e) {
+      setMessage({ text: String(e), ok: false });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <PluginCard
+      accentVar="--source-gmail"
+      label="Gmail Plugin"
+      lastPoll={lastPoll}
+      lastError={lastError}
+      onSave={saveConfig}
+      saving={saving}
+      message={message}
+    >
+      <FormField
+        label="Client ID"
+        type="text"
+        value={clientId}
+        onChange={setClientId}
+        placeholder="xxxx.apps.googleusercontent.com"
+        hint="From Google Cloud Console → Credentials → OAuth 2.0 Client ID"
+      />
+      <FormField
+        label="Client Secret"
+        type="password"
+        value={clientSecret}
+        onChange={setClientSecret}
+        placeholder="••••••••••••••••••••"
+      />
+      <FormField
+        label="Refresh Token"
+        type="password"
+        value={refreshToken}
+        onChange={setRefreshToken}
+        placeholder="1//xxxx..."
+        hint="Generate at developers.google.com/oauthplayground (scope: gmail.readonly)"
+      />
+      <FormField
+        label="VIP Senders (comma-separated emails)"
+        type="text"
+        value={vipSenders}
+        onChange={setVipSenders}
+        placeholder="boss@company.com, cto@company.com"
+        hint="Emails from these senders get +3 urgency weight"
+      />
+    </PluginCard>
+  );
+}
+
+/* ── Settings ────────────────────────────────────────────── */
+
+interface Props {
+  onBack: () => void;
+}
+
+export function Settings({ onBack }: Props) {
   return (
     <div
       style={{
@@ -222,173 +608,9 @@ export function Settings({ onBack }: Props) {
         </h2>
       </div>
 
-      {/* ── Jira plugin card ── */}
-      <div
-        style={{
-          maxWidth: 480,
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-dim)",
-          borderRadius: "var(--radius-md)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Card header */}
-        <div
-          style={{
-            padding: "var(--sp-3) var(--sp-4)",
-            borderBottom: "1px solid var(--border-dim)",
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--sp-2)",
-          }}
-        >
-          <svg width="7" height="7" viewBox="0 0 7 7">
-            <circle cx="3.5" cy="3.5" r="3.5" fill="var(--source-jira)" />
-          </svg>
-          <span
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 13,
-              fontWeight: 700,
-              color: "var(--source-jira)",
-            }}
-          >
-            Jira Plugin
-          </span>
-
-          {lastPoll !== null && (
-            <span
-              style={{
-                marginLeft: "auto",
-                fontFamily: "var(--font-data)",
-                fontSize: 10,
-                color: "var(--text-muted)",
-              }}
-            >
-              Last sync {timeAgo(lastPoll)}
-            </span>
-          )}
-        </div>
-
-        {/* Form fields */}
-        <div
-          style={{
-            padding: "var(--sp-4)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--sp-3)",
-          }}
-        >
-          <FormField
-            label="Base URL"
-            type="text"
-            value={baseUrl}
-            onChange={setBaseUrl}
-            placeholder="https://company.atlassian.net"
-          />
-          <FormField
-            label="Email"
-            type="email"
-            value={email}
-            onChange={setEmail}
-            placeholder="you@company.com"
-          />
-          <FormField
-            label="API Token"
-            type="password"
-            value={apiToken}
-            onChange={setApiToken}
-            placeholder="••••••••••••••••••••"
-          />
-          <FormField
-            label="Poll Interval (seconds)"
-            type="number"
-            value={String(pollInterval)}
-            onChange={(v) => setPollInterval(Math.max(60, Number(v)))}
-            placeholder="600"
-          />
-        </div>
-
-        {/* Last error */}
-        {lastError && (
-          <div
-            style={{
-              margin: "0 var(--sp-4) var(--sp-3)",
-              padding: "var(--sp-2) var(--sp-3)",
-              background: "var(--urgency-high-bg)",
-              border: "1px solid var(--urgency-high)",
-              borderRadius: "var(--radius-md)",
-            }}
-          >
-            <p
-              style={{
-                fontFamily: "var(--font-data)",
-                fontSize: 11,
-                color: "var(--urgency-high)",
-                lineHeight: 1.5,
-              }}
-            >
-              Last error: {lastError}
-            </p>
-          </div>
-        )}
-
-        {/* Footer: Save button + status */}
-        <div
-          style={{
-            padding: "var(--sp-3) var(--sp-4)",
-            borderTop: "1px solid var(--border-dim)",
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--sp-3)",
-          }}
-        >
-          <button
-            onClick={saveConfig}
-            disabled={saving}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--sp-2)",
-              padding: "7px 20px",
-              borderRadius: "var(--radius-md)",
-              background: "var(--accent-primary)",
-              color: "var(--text-inverse)",
-              border: "none",
-              fontSize: 12,
-              fontFamily: "var(--font-data)",
-              fontWeight: 600,
-              cursor: saving ? "not-allowed" : "pointer",
-              opacity: saving ? 0.7 : 1,
-              transition: "background var(--transition-fast)",
-            }}
-            onMouseEnter={(e) => {
-              if (!saving)
-                (e.currentTarget as HTMLButtonElement).style.background =
-                  "var(--accent-hover)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                "var(--accent-primary)";
-            }}
-          >
-            <Save size={12} />
-            {saving ? "Saving…" : "Save"}
-          </button>
-
-          {message && (
-            <p
-              style={{
-                fontFamily: "var(--font-data)",
-                fontSize: 11,
-                color: message.ok ? "var(--accent-primary)" : "var(--urgency-high)",
-              }}
-            >
-              {message.text}
-            </p>
-          )}
-        </div>
-      </div>
+      <JiraSection />
+      <GitHubSection />
+      <GmailSection />
     </div>
   );
 }
