@@ -449,7 +449,11 @@ function GmailSection() {
         setClientId(creds.clientId ?? "");
         setClientSecret(creds.clientSecret ?? "");
         setRefreshToken(creds.refreshToken ?? "");
-        setVipSenders(creds.vipSenders ?? "");
+        setVipSenders(
+          Array.isArray(creds.vipSenders)
+            ? creds.vipSenders.join(", ")
+            : (creds.vipSenders ?? ""),
+        );
       }
       if (config) {
         setLastPoll(config.last_poll_at);
