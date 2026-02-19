@@ -356,6 +356,7 @@ function JiraSection() {
 
 function GitHubSection() {
   const [token, setToken]           = useState("");
+  const [pollInterval, setPollInterval] = useState(600);
   const [saving, setSaving]         = useState(false);
   const [message, setMessage]       = useState<{ text: string; ok: boolean } | null>(null);
   const [lastPoll, setLastPoll]     = useState<number | null>(null);
@@ -371,6 +372,7 @@ function GitHubSection() {
         setToken(creds.token ?? "");
       }
       if (config) {
+        setPollInterval(config.poll_interval_secs);
         setLastPoll(config.last_poll_at);
         setLastError(config.last_error);
       }
@@ -389,7 +391,7 @@ function GitHubSection() {
           plugin_id: "github",
           is_enabled: true,
           credentials: JSON.stringify(credentials),
-          poll_interval_secs: 600,
+          poll_interval_secs: pollInterval,
           last_poll_at: lastPoll,
           last_error: null,
           error_count: 0,
@@ -423,6 +425,13 @@ function GitHubSection() {
         placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
         hint="Requires scopes: repo, read:user, notifications"
       />
+      <FormField
+        label="Poll Interval (seconds)"
+        type="number"
+        value={String(pollInterval)}
+        onChange={(v) => setPollInterval(Math.max(60, Number(v)))}
+        placeholder="600"
+      />
     </PluginCard>
   );
 }
@@ -434,6 +443,7 @@ function GmailSection() {
   const [clientSecret, setClientSecret] = useState("");
   const [refreshToken, setRefreshToken] = useState("");
   const [vipSenders, setVipSenders]     = useState("");
+  const [pollInterval, setPollInterval] = useState(600);
   const [saving, setSaving]             = useState(false);
   const [message, setMessage]           = useState<{ text: string; ok: boolean } | null>(null);
   const [lastPoll, setLastPoll]         = useState<number | null>(null);
@@ -456,6 +466,7 @@ function GmailSection() {
         );
       }
       if (config) {
+        setPollInterval(config.poll_interval_secs);
         setLastPoll(config.last_poll_at);
         setLastError(config.last_error);
       }
@@ -485,7 +496,7 @@ function GmailSection() {
           plugin_id: "gmail",
           is_enabled: true,
           credentials: JSON.stringify(credentials),
-          poll_interval_secs: 600,
+          poll_interval_secs: pollInterval,
           last_poll_at: lastPoll,
           last_error: null,
           error_count: 0,
@@ -541,6 +552,13 @@ function GmailSection() {
         onChange={setVipSenders}
         placeholder="boss@company.com, cto@company.com"
         hint="Emails from these senders get +3 urgency weight"
+      />
+      <FormField
+        label="Poll Interval (seconds)"
+        type="number"
+        value={String(pollInterval)}
+        onChange={(v) => setPollInterval(Math.max(60, Number(v)))}
+        placeholder="600"
       />
     </PluginCard>
   );

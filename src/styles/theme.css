@@ -100,6 +100,14 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  user-select: none; /* Desktop app: no selection on chrome */
+}
+
+/* Allow text selection on content areas */
+.selectable,
+.feed-item .feed-item-title,
+.detail-panel-content {
+  user-select: text;
 }
 
 /* ── Focus ring — double-ring for universal visibility ── */

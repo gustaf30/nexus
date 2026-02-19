@@ -16,23 +16,33 @@
         "width": 1200,
         "height": 800,
         "minWidth": 900,
-        "minHeight": 600
+        "minHeight": 600,
+        "decorations": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": { "plugins/*": "plugins/" },
+    "resources": { "plugins/*.ts": "plugins/" },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "shortDescription": "Unified developer dashboard",
+    "longDescription": "Nexus Hub aggregates Jira, Gmail, and GitHub into a single desktop dashboard with intelligent, heuristic-based notifications.",
+    "copyright": "Copyright 2026 Gustavo",
+    "category": "DeveloperTool",
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      }
+    }
   }
 }

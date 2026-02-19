@@ -16,6 +16,9 @@ impl Database {
     }
 
     fn run_migrations(&self) -> Result<()> {
+        // Enable foreign key enforcement (off by default in SQLite).
+        self.conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+
         self.conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS items (
@@ -39,7 +42,7 @@ impl Database {
 
             CREATE TABLE IF NOT EXISTS notifications (
                 id TEXT PRIMARY KEY,
-                item_id TEXT NOT NULL REFERENCES items(id),
+                item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
                 reason TEXT NOT NULL,
                 urgency TEXT NOT NULL,
                 is_dismissed INTEGER DEFAULT 0,
@@ -78,6 +81,52 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_notifications_dismissed ON notifications(is_dismissed);
         ",
         )?;
+
+        // Migration: recreate notifications table with ON DELETE CASCADE if it exists
+        // without it. This handles existing dev databases created before the CASCADE was added.
+        self.migrate_notifications_cascade()?;
+
+        Ok(())
+    }
+
+    /// Recreate the notifications table with ON DELETE CASCADE if the FK lacks it.
+    fn migrate_notifications_cascade(&self) -> Result<()> {
+        // Check if the table's FK already has CASCADE by inspecting the schema SQL.
+        let schema: String = self
+            .conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='notifications'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
+
+        if schema.contains("ON DELETE CASCADE") {
+            return Ok(()); // already migrated
+        }
+
+        // Recreate via the standard SQLite migration pattern: rename → create → copy → drop.
+        self.conn.execute_batch(
+            "
+            ALTER TABLE notifications RENAME TO _notifications_old;
+
+            CREATE TABLE notifications (
+                id TEXT PRIMARY KEY,
+                item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+                reason TEXT NOT NULL,
+                urgency TEXT NOT NULL,
+                is_dismissed INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL
+            );
+
+            INSERT INTO notifications SELECT * FROM _notifications_old;
+            DROP TABLE _notifications_old;
+
+            CREATE INDEX IF NOT EXISTS idx_notifications_urgency ON notifications(urgency);
+            CREATE INDEX IF NOT EXISTS idx_notifications_dismissed ON notifications(is_dismissed);
+        ",
+        )?;
+
         Ok(())
     }
 
@@ -261,6 +310,28 @@ impl Database {
         Ok(())
     }
 
+    /// Return full configs for enabled plugins with credentials.
+    pub fn get_enabled_plugin_configs(&self) -> Result<Vec<PluginConfig>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT * FROM plugin_config WHERE is_enabled = 1 AND credentials IS NOT NULL",
+        )?;
+        let configs = stmt
+            .query_map([], |row| {
+                Ok(PluginConfig {
+                    plugin_id: row.get(0)?,
+                    is_enabled: row.get::<_, i32>(1)? != 0,
+                    credentials: row.get(2)?,
+                    poll_interval_secs: row.get(3)?,
+                    last_poll_at: row.get(4)?,
+                    last_error: row.get(5)?,
+                    error_count: row.get(6)?,
+                    settings: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<PluginConfig>>>()?;
+        Ok(configs)
+    }
+
     // -- Heuristic Weights --
 
     pub fn get_weights(&self, source: &str) -> Result<Vec<HeuristicWeight>> {
@@ -307,5 +378,325 @@ impl Database {
             self.upsert_weight(&hw)?;
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub fn new_in_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        let db = Self { conn };
+        db.run_migrations()?;
+        Ok(db)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{NexusItem, Notification, PluginConfig};
+
+    fn make_item() -> NexusItem {
+        NexusItem {
+            id: "jira-TEST-1".to_string(),
+            source: "jira".to_string(),
+            source_id: "TEST-1".to_string(),
+            item_type: "ticket".to_string(),
+            title: "Fix login bug".to_string(),
+            summary: Some("Users cannot log in with SSO".to_string()),
+            url: "https://jira.example.com/browse/TEST-1".to_string(),
+            author: Some("alice".to_string()),
+            timestamp: 1000,
+            priority: 3,
+            metadata: Some(r#"{"status":"open"}"#.to_string()),
+            tags: Some(r#"["bug","auth"]"#.to_string()),
+            is_read: false,
+            created_at: 900,
+            updated_at: 950,
+        }
+    }
+
+    fn make_notification() -> Notification {
+        Notification {
+            id: "notif-1".to_string(),
+            item_id: "jira-TEST-1".to_string(),
+            reason: "assigned".to_string(),
+            urgency: "medium".to_string(),
+            is_dismissed: false,
+            created_at: 1000,
+        }
+    }
+
+    #[test]
+    fn new_creates_tables() {
+        let db = Database::new_in_memory().expect("in-memory db should succeed");
+        let items = db.get_items(None, false, 100).unwrap();
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn upsert_and_get_roundtrip() {
+        let db = Database::new_in_memory().unwrap();
+        let item = make_item();
+        db.upsert_item(&item).unwrap();
+
+        let items = db.get_items(None, false, 100).unwrap();
+        assert_eq!(items.len(), 1);
+        let got = &items[0];
+        assert_eq!(got.id, item.id);
+        assert_eq!(got.source, item.source);
+        assert_eq!(got.source_id, item.source_id);
+        assert_eq!(got.item_type, item.item_type);
+        assert_eq!(got.title, item.title);
+        assert_eq!(got.summary, item.summary);
+        assert_eq!(got.url, item.url);
+        assert_eq!(got.author, item.author);
+        assert_eq!(got.timestamp, item.timestamp);
+        assert_eq!(got.priority, item.priority);
+        assert_eq!(got.metadata, item.metadata);
+        assert_eq!(got.tags, item.tags);
+        assert_eq!(got.is_read, item.is_read);
+        assert_eq!(got.created_at, item.created_at);
+        assert_eq!(got.updated_at, item.updated_at);
+    }
+
+    #[test]
+    fn upsert_conflict_preserves_is_read() {
+        let db = Database::new_in_memory().unwrap();
+        let item = make_item();
+        db.upsert_item(&item).unwrap();
+
+        // Mark as read
+        db.mark_item_read(&item.id, true).unwrap();
+
+        // Upsert same source+source_id with updated title
+        let mut updated = item.clone();
+        updated.title = "Updated title".to_string();
+        updated.is_read = false; // plugin sends is_read=false
+        updated.updated_at = 2000;
+        db.upsert_item(&updated).unwrap();
+
+        let items = db.get_items(None, false, 100).unwrap();
+        assert_eq!(items.len(), 1);
+        // is_read should still be true (ON CONFLICT does not update is_read)
+        assert!(items[0].is_read, "is_read should be preserved on conflict");
+        assert_eq!(items[0].title, "Updated title");
+    }
+
+    #[test]
+    fn get_items_filters_by_source() {
+        let db = Database::new_in_memory().unwrap();
+
+        let jira_item = make_item();
+        db.upsert_item(&jira_item).unwrap();
+
+        let mut gh_item = make_item();
+        gh_item.id = "github-PR-42".to_string();
+        gh_item.source = "github".to_string();
+        gh_item.source_id = "PR-42".to_string();
+        db.upsert_item(&gh_item).unwrap();
+
+        let jira_only = db.get_items(Some("jira"), false, 100).unwrap();
+        assert_eq!(jira_only.len(), 1);
+        assert_eq!(jira_only[0].source, "jira");
+    }
+
+    #[test]
+    fn get_items_filters_unread_only() {
+        let db = Database::new_in_memory().unwrap();
+
+        let item1 = make_item();
+        db.upsert_item(&item1).unwrap();
+
+        let mut item2 = make_item();
+        item2.id = "jira-TEST-2".to_string();
+        item2.source_id = "TEST-2".to_string();
+        item2.timestamp = 2000;
+        db.upsert_item(&item2).unwrap();
+
+        // Mark item1 as read
+        db.mark_item_read(&item1.id, true).unwrap();
+
+        let unread = db.get_items(None, true, 100).unwrap();
+        assert_eq!(unread.len(), 1);
+        assert_eq!(unread[0].id, "jira-TEST-2");
+    }
+
+    #[test]
+    fn get_items_respects_limit() {
+        let db = Database::new_in_memory().unwrap();
+
+        for i in 0..5 {
+            let mut item = make_item();
+            item.id = format!("jira-TEST-{}", i);
+            item.source_id = format!("TEST-{}", i);
+            item.timestamp = 1000 + i;
+            db.upsert_item(&item).unwrap();
+        }
+
+        let items = db.get_items(None, false, 2).unwrap();
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn get_items_orders_by_timestamp_desc() {
+        let db = Database::new_in_memory().unwrap();
+
+        for (i, ts) in [(0, 100i64), (1, 300), (2, 200)] {
+            let mut item = make_item();
+            item.id = format!("jira-TEST-{}", i);
+            item.source_id = format!("TEST-{}", i);
+            item.timestamp = ts;
+            db.upsert_item(&item).unwrap();
+        }
+
+        let items = db.get_items(None, false, 100).unwrap();
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].timestamp, 300);
+        assert_eq!(items[1].timestamp, 200);
+        assert_eq!(items[2].timestamp, 100);
+    }
+
+    #[test]
+    fn mark_item_read_toggles() {
+        let db = Database::new_in_memory().unwrap();
+        let item = make_item();
+        db.upsert_item(&item).unwrap();
+        assert!(!db.get_items(None, false, 1).unwrap()[0].is_read);
+
+        db.mark_item_read(&item.id, true).unwrap();
+        assert!(db.get_items(None, false, 1).unwrap()[0].is_read);
+
+        db.mark_item_read(&item.id, false).unwrap();
+        assert!(!db.get_items(None, false, 1).unwrap()[0].is_read);
+
+        db.mark_item_read(&item.id, true).unwrap();
+        assert!(db.get_items(None, false, 1).unwrap()[0].is_read);
+    }
+
+    #[test]
+    fn insert_and_get_notifications() {
+        let db = Database::new_in_memory().unwrap();
+        let item = make_item();
+        db.upsert_item(&item).unwrap();
+
+        let notif = make_notification();
+        db.insert_notification(&notif).unwrap();
+
+        let active = db.get_active_notifications().unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, notif.id);
+        assert_eq!(active[0].item_id, notif.item_id);
+        assert_eq!(active[0].reason, notif.reason);
+        assert_eq!(active[0].urgency, notif.urgency);
+        assert!(!active[0].is_dismissed);
+    }
+
+    #[test]
+    fn insert_notification_duplicate_ignored() {
+        let db = Database::new_in_memory().unwrap();
+        let item = make_item();
+        db.upsert_item(&item).unwrap();
+
+        let notif = make_notification();
+        db.insert_notification(&notif).unwrap();
+        db.insert_notification(&notif).unwrap(); // duplicate — INSERT OR IGNORE
+
+        let active = db.get_active_notifications().unwrap();
+        assert_eq!(active.len(), 1);
+    }
+
+    #[test]
+    fn dismiss_excludes_from_active() {
+        let db = Database::new_in_memory().unwrap();
+        let item = make_item();
+        db.upsert_item(&item).unwrap();
+
+        let notif = make_notification();
+        db.insert_notification(&notif).unwrap();
+
+        db.dismiss_notification(&notif.id).unwrap();
+
+        let active = db.get_active_notifications().unwrap();
+        assert!(active.is_empty());
+    }
+
+    #[test]
+    fn get_plugin_config_none() {
+        let db = Database::new_in_memory().unwrap();
+        let config = db.get_plugin_config("nonexistent").unwrap();
+        assert!(config.is_none());
+    }
+
+    #[test]
+    fn plugin_config_roundtrip() {
+        let db = Database::new_in_memory().unwrap();
+        let config = PluginConfig {
+            plugin_id: "jira".to_string(),
+            is_enabled: true,
+            credentials: Some(r#"{"token":"abc"}"#.to_string()),
+            poll_interval_secs: 300,
+            last_poll_at: Some(5000),
+            last_error: None,
+            error_count: 0,
+            settings: Some(r#"{"project":"PROJ"}"#.to_string()),
+        };
+        db.upsert_plugin_config(&config).unwrap();
+
+        let got = db.get_plugin_config("jira").unwrap().expect("should exist");
+        assert_eq!(got.plugin_id, config.plugin_id);
+        assert_eq!(got.is_enabled, config.is_enabled);
+        assert_eq!(got.credentials, config.credentials);
+        assert_eq!(got.poll_interval_secs, config.poll_interval_secs);
+        assert_eq!(got.last_poll_at, config.last_poll_at);
+        assert_eq!(got.last_error, config.last_error);
+        assert_eq!(got.error_count, config.error_count);
+        assert_eq!(got.settings, config.settings);
+    }
+
+    #[test]
+    fn plugin_config_updates_on_conflict() {
+        let db = Database::new_in_memory().unwrap();
+        let config = PluginConfig {
+            plugin_id: "jira".to_string(),
+            is_enabled: true,
+            credentials: Some(r#"{"token":"old"}"#.to_string()),
+            poll_interval_secs: 300,
+            last_poll_at: None,
+            last_error: None,
+            error_count: 0,
+            settings: None,
+        };
+        db.upsert_plugin_config(&config).unwrap();
+
+        let mut updated = config.clone();
+        updated.credentials = Some(r#"{"token":"new"}"#.to_string());
+        db.upsert_plugin_config(&updated).unwrap();
+
+        let got = db.get_plugin_config("jira").unwrap().expect("should exist");
+        assert_eq!(got.credentials, Some(r#"{"token":"new"}"#.to_string()));
+    }
+
+    #[test]
+    fn seed_default_weights() {
+        let db = Database::new_in_memory().unwrap();
+        db.seed_default_weights().unwrap();
+
+        let weights = db.get_weights("jira").unwrap();
+        assert_eq!(weights.len(), 4);
+
+        let find = |signal: &str| weights.iter().find(|w| w.signal == signal).unwrap();
+        assert_eq!(find("assigned_to_me").weight, 3);
+        assert_eq!(find("priority_p1_blocker").weight, 4);
+        assert_eq!(find("mentioned_in_comment").weight, 2);
+        assert_eq!(find("deadline_24h").weight, 3);
+    }
+
+    #[test]
+    fn seed_weights_idempotent() {
+        let db = Database::new_in_memory().unwrap();
+        db.seed_default_weights().unwrap();
+        db.seed_default_weights().unwrap();
+
+        let weights = db.get_weights("jira").unwrap();
+        assert_eq!(weights.len(), 4);
     }
 }
