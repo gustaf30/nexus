@@ -97,6 +97,14 @@ impl Scheduler {
             }
 
             for pn in &result.notifications {
+                // Skip if an active notification already exists for this item+reason
+                if db_ref
+                    .has_active_notification(&pn.item_id, &pn.reason)
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+
                 let notif = Notification {
                     id: Uuid::new_v4().to_string(),
                     item_id: pn.item_id.clone(),
@@ -108,7 +116,9 @@ impl Scheduler {
                 db_ref.insert_notification(&notif).map_err(|e| e.to_string())?;
 
                 if let Some(item) = result.items.iter().find(|i| i.id == pn.item_id) {
-                    crate::notifications::send_native_notification(app, &notif, &item.title);
+                    if crate::notifications::should_send_notification(&db_ref, &pn.urgency) {
+                        crate::notifications::send_native_notification(app, &notif, &item.title);
+                    }
                 }
             }
 

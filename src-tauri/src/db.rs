@@ -262,6 +262,47 @@ impl Database {
         Ok(())
     }
 
+    /// Returns true if an active (non-dismissed) notification already exists
+    /// for the given item_id and reason combination.
+    pub fn has_active_notification(&self, item_id: &str, reason: &str) -> Result<bool> {
+        let count: i32 = self.conn.query_row(
+            "SELECT COUNT(*) FROM notifications WHERE item_id = ?1 AND reason = ?2 AND is_dismissed = 0",
+            params![item_id, reason],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    pub fn dismiss_all_notifications(&self) -> Result<()> {
+        self.conn.execute(
+            "UPDATE notifications SET is_dismissed = 1 WHERE is_dismissed = 0",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // -- App Settings --
+
+    pub fn get_app_setting(&self, key: &str) -> Result<Option<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT value FROM app_settings WHERE key = ?1")?;
+        let mut rows = stmt.query_map(params![key], |row| row.get::<_, String>(0))?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn set_app_setting(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
     // -- Plugin Config --
 
     pub fn get_plugin_config(&self, plugin_id: &str) -> Result<Option<PluginConfig>> {
@@ -617,6 +658,74 @@ mod tests {
 
         let active = db.get_active_notifications().unwrap();
         assert!(active.is_empty());
+    }
+
+    #[test]
+    fn has_active_notification_detects_existing() {
+        let db = Database::new_in_memory().unwrap();
+        let item = make_item();
+        db.upsert_item(&item).unwrap();
+
+        // No notification yet
+        assert!(!db.has_active_notification(&item.id, "assigned").unwrap());
+
+        // Insert one
+        let notif = make_notification();
+        db.insert_notification(&notif).unwrap();
+        assert!(db.has_active_notification(&item.id, "assigned").unwrap());
+
+        // Different reason — should be false
+        assert!(!db.has_active_notification(&item.id, "deadline_approaching").unwrap());
+
+        // Dismiss it — should become false
+        db.dismiss_notification(&notif.id).unwrap();
+        assert!(!db.has_active_notification(&item.id, "assigned").unwrap());
+    }
+
+    #[test]
+    fn dismiss_all_notifications_clears_active() {
+        let db = Database::new_in_memory().unwrap();
+        let item = make_item();
+        db.upsert_item(&item).unwrap();
+
+        // Insert two notifications
+        let n1 = make_notification();
+        db.insert_notification(&n1).unwrap();
+
+        let n2 = Notification {
+            id: "notif-2".to_string(),
+            item_id: item.id.clone(),
+            reason: "high_priority".to_string(),
+            urgency: "high".to_string(),
+            is_dismissed: false,
+            created_at: 1000,
+        };
+        db.insert_notification(&n2).unwrap();
+
+        assert_eq!(db.get_active_notifications().unwrap().len(), 2);
+
+        db.dismiss_all_notifications().unwrap();
+        assert_eq!(db.get_active_notifications().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn app_settings_roundtrip() {
+        let db = Database::new_in_memory().unwrap();
+
+        assert!(db.get_app_setting("focus_mode_enabled").unwrap().is_none());
+
+        db.set_app_setting("focus_mode_enabled", "1").unwrap();
+        assert_eq!(
+            db.get_app_setting("focus_mode_enabled").unwrap(),
+            Some("1".to_string())
+        );
+
+        // Update existing
+        db.set_app_setting("focus_mode_enabled", "0").unwrap();
+        assert_eq!(
+            db.get_app_setting("focus_mode_enabled").unwrap(),
+            Some("0".to_string())
+        );
     }
 
     #[test]

@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Bell, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import { RefreshCw, Settings as SettingsIcon, Shield } from "lucide-react";
 import "./styles/theme.css";
 
 import { useItems, type NexusItem } from "./hooks/useItems";
+import { useNotifications, type Notification } from "./hooks/useNotifications";
 import { Feed } from "./components/Feed";
 import { DetailPanel } from "./components/DetailPanel";
 import { Settings } from "./components/Settings";
+import { NotificationCenter } from "./components/NotificationCenter";
+import { CommandPalette } from "./components/CommandPalette";
 
 type View   = "dashboard" | "settings";
 type Source = "all" | "jira" | "gmail" | "slack" | "github";
@@ -33,11 +36,43 @@ export default function App() {
   const [view, setView]               = useState<View>("dashboard");
   const [activeSource, setActiveSource] = useState<Source>("all");
   const [unreadOnly, setUnreadOnly]   = useState(false);
+  const [urgentOnly, setUrgentOnly]   = useState(false);
+  const [todayOnly, setTodayOnly]     = useState(false);
   const [selectedItem, setSelectedItem] = useState<NexusItem | null>(null);
   const [pluginConfigs, setPluginConfigs] = useState<PluginConfig[]>([]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+
+  // Load focus mode state on mount
+  useEffect(() => {
+    invoke<string | null>("get_app_setting", { key: "focus_mode_enabled" })
+      .then((val) => setFocusMode(val === "1"))
+      .catch(() => {});
+  }, []);
+
+  const toggleFocusMode = async () => {
+    const newVal = !focusMode;
+    setFocusMode(newVal);
+    try {
+      await invoke("set_app_setting", { key: "focus_mode_enabled", value: newVal ? "1" : "0" });
+    } catch (e) {
+      setFocusMode(!newVal); // rollback
+      console.error("Failed to toggle focus mode:", e);
+    }
+  };
 
   const source = activeSource === "all" ? null : activeSource;
   const { items, loading, error, refresh, refreshAll, markRead } = useItems(source, unreadOnly);
+  const { notifications, dismiss, dismissAll } = useNotifications();
+
+  const now = Math.floor(Date.now() / 1000);
+  const dayAgo = now - 86400;
+
+  const filteredItems = items.filter((item) => {
+    if (todayOnly && item.timestamp < dayAgo) return false;
+    if (urgentOnly && item.is_read) return false;
+    return true;
+  });
 
   const ALL_PLUGINS = ["jira", "github", "gmail"] as const;
 
@@ -69,6 +104,46 @@ export default function App() {
         setView((v) => (v === "settings" ? "dashboard" : "settings"));
       }
 
+      // Ctrl+K — command palette
+      if (mod && e.key === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+
+      // j/k/Enter/m — feed navigation (only on dashboard, not when typing)
+      if (view === "dashboard" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        if (e.key === "j") {
+          e.preventDefault();
+          setSelectedItem((prev) => {
+            const idx = prev ? filteredItems.findIndex((i) => i.id === prev.id) : -1;
+            const next = idx + 1 < filteredItems.length ? idx + 1 : 0;
+            return filteredItems[next] ?? null;
+          });
+          return;
+        }
+        if (e.key === "k") {
+          e.preventDefault();
+          setSelectedItem((prev) => {
+            const idx = prev ? filteredItems.findIndex((i) => i.id === prev.id) : 0;
+            const next = idx > 0 ? idx - 1 : filteredItems.length - 1;
+            return filteredItems[next] ?? null;
+          });
+          return;
+        }
+        if (e.key === "Enter" && selectedItem?.url) {
+          e.preventDefault();
+          import("@tauri-apps/plugin-opener").then(({ openUrl }) => {
+            openUrl(selectedItem.url).catch(console.error);
+          });
+          return;
+        }
+        if (e.key === "m" && selectedItem) {
+          e.preventDefault();
+          markRead(selectedItem.id, !selectedItem.is_read);
+          return;
+        }
+      }
+
       // Escape — deselect item or close settings
       if (e.key === "Escape") {
         if (view === "settings") {
@@ -81,7 +156,7 @@ export default function App() {
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [view, source, loading]);
+  }, [view, source, loading, filteredItems, selectedItem, markRead]);
 
   // Reload configs when returning from settings so status bar updates immediately.
   useEffect(() => {
@@ -109,6 +184,24 @@ export default function App() {
     }
   };
 
+  const handleOpenNotificationItem = (itemId: string) => {
+    const item = items.find((i) => i.id === itemId);
+    if (item) {
+      setSelectedItem(item);
+      setView("dashboard");
+    }
+  };
+
+  const commands = [
+    { id: "dashboard", label: "Go to Dashboard", shortcut: "Ctrl+,", action: () => setView("dashboard") },
+    { id: "settings", label: "Go to Settings", shortcut: "Ctrl+,", action: () => setView("settings") },
+    { id: "jira", label: "Filter: Jira", action: () => { setActiveSource("jira"); setView("dashboard"); } },
+    { id: "gmail", label: "Filter: Gmail", action: () => { setActiveSource("gmail"); setView("dashboard"); } },
+    { id: "github", label: "Filter: GitHub", action: () => { setActiveSource("github"); setView("dashboard"); } },
+    { id: "all", label: "Filter: All Sources", action: () => { setActiveSource("all"); setView("dashboard"); } },
+    { id: "refresh", label: "Refresh All", shortcut: "Ctrl+R", action: handleRefresh },
+  ];
+
   const activePlugins = pluginConfigs.filter((c) => c.is_enabled && c.credentials).length;
   const lastSyncAt    = pluginConfigs.reduce<number | null>((latest, c) => {
     if (c.last_poll_at === null) return latest;
@@ -124,6 +217,12 @@ export default function App() {
           setView((v) => (v === "settings" ? "dashboard" : "settings"))
         }
         onRefresh={handleRefresh}
+        notifications={notifications}
+        onDismiss={dismiss}
+        onDismissAll={dismissAll}
+        onOpenNotificationItem={handleOpenNotificationItem}
+        focusMode={focusMode}
+        onToggleFocusMode={toggleFocusMode}
       />
 
       {view === "dashboard" ? (
@@ -136,6 +235,10 @@ export default function App() {
             }}
             unreadOnly={unreadOnly}
             onUnreadOnlyChange={setUnreadOnly}
+            urgentOnly={urgentOnly}
+            onUrgentOnlyChange={setUrgentOnly}
+            todayOnly={todayOnly}
+            onTodayOnlyChange={setTodayOnly}
           />
 
           <main
@@ -143,7 +246,7 @@ export default function App() {
             style={{ flex: 1, minWidth: 320, overflowY: "auto", display: "flex", flexDirection: "column" }}
           >
             <Feed
-              items={items}
+              items={filteredItems}
               loading={loading}
               error={error}
               selectedId={selectedItem?.id ?? null}
@@ -158,6 +261,7 @@ export default function App() {
       )}
 
       <StatusBar activePlugins={activePlugins} lastSyncAt={lastSyncAt} />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
     </div>
   );
 }
@@ -169,11 +273,23 @@ function Titlebar({
   loading,
   onToggleSettings,
   onRefresh,
+  notifications,
+  onDismiss,
+  onDismissAll,
+  onOpenNotificationItem,
+  focusMode,
+  onToggleFocusMode,
 }: {
   view: View;
   loading: boolean;
   onToggleSettings: () => void;
   onRefresh: () => void;
+  notifications: Notification[];
+  onDismiss: (id: string) => void;
+  onDismissAll: () => void;
+  onOpenNotificationItem: (itemId: string) => void;
+  focusMode: boolean;
+  onToggleFocusMode: () => void;
 }) {
   return (
     <header
@@ -216,7 +332,18 @@ function Titlebar({
 
       {/* Actions */}
       <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
-        <IconButton label="Notifications" icon={<Bell size={15} />} />
+        <NotificationCenter
+          notifications={notifications}
+          onDismiss={onDismiss}
+          onDismissAll={onDismissAll}
+          onOpenItem={onOpenNotificationItem}
+        />
+        <IconButton
+          label={focusMode ? "Focus mode ON" : "Focus mode OFF"}
+          icon={<Shield size={15} />}
+          active={focusMode}
+          onClick={onToggleFocusMode}
+        />
         <IconButton
           label={view === "settings" ? "Dashboard" : "Settings"}
           icon={<SettingsIcon size={15} />}
@@ -246,11 +373,19 @@ function Sidebar({
   onSourceChange,
   unreadOnly,
   onUnreadOnlyChange,
+  urgentOnly,
+  onUrgentOnlyChange,
+  todayOnly,
+  onTodayOnlyChange,
 }: {
   activeSource: Source;
   onSourceChange: (s: Source) => void;
   unreadOnly: boolean;
   onUnreadOnlyChange: (v: boolean) => void;
+  urgentOnly: boolean;
+  onUrgentOnlyChange: (v: boolean) => void;
+  todayOnly: boolean;
+  onTodayOnlyChange: (v: boolean) => void;
 }) {
   return (
     <aside
@@ -310,29 +445,11 @@ function Sidebar({
       </div>
 
       <div style={{ padding: "var(--sp-1) var(--sp-2)" }}>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--sp-2)",
-            height: 28,
-            padding: "0 var(--sp-3)",
-            fontSize: 12,
-            color: unreadOnly ? "var(--text-primary)" : "var(--text-secondary)",
-            cursor: "pointer",
-            borderRadius: "var(--radius-md)",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={unreadOnly}
-            onChange={(e) => onUnreadOnlyChange(e.target.checked)}
-            style={{ accentColor: "var(--accent-primary)", cursor: "pointer" }}
-          />
-          Unread only
-        </label>
-
-        {(["Critical only", "Today"] as const).map((label) => (
+        {[
+          { label: "Unread only", checked: unreadOnly, onChange: onUnreadOnlyChange },
+          { label: "Urgent", checked: urgentOnly, onChange: onUrgentOnlyChange },
+          { label: "Today", checked: todayOnly, onChange: onTodayOnlyChange },
+        ].map(({ label, checked, onChange }) => (
           <label
             key={label}
             style={{
@@ -342,13 +459,17 @@ function Sidebar({
               height: 28,
               padding: "0 var(--sp-3)",
               fontSize: 12,
-              color: "var(--text-muted)",
-              cursor: "not-allowed",
+              color: checked ? "var(--text-primary)" : "var(--text-secondary)",
+              cursor: "pointer",
               borderRadius: "var(--radius-md)",
-              opacity: 0.5,
             }}
           >
-            <input type="checkbox" disabled style={{ cursor: "not-allowed" }} />
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => onChange(e.target.checked)}
+              style={{ accentColor: "var(--accent-primary)", cursor: "pointer" }}
+            />
             {label}
           </label>
         ))}

@@ -65,3 +65,21 @@ pub fn refresh_plugin(
     let scheduler = Scheduler::new(state.plugins_dir.clone());
     scheduler.poll_plugin(&plugin_id, &state.db, &app)
 }
+
+#[tauri::command]
+pub fn dismiss_all_notifications(state: State<AppState>) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.dismiss_all_notifications().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_app_setting(state: State<AppState>, key: String) -> Result<Option<String>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_app_setting(&key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_app_setting(state: State<AppState>, key: String, value: String) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.set_app_setting(&key, &value).map_err(|e| e.to_string())
+}
