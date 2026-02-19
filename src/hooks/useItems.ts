@@ -57,7 +57,7 @@ export function useItems(source: string | null, unreadOnly: boolean) {
     };
   }, [fetchItems]);
 
-  /** Trigger a plugin poll then refresh the list. */
+  /** Trigger a single plugin poll then refresh the list. */
   const refresh = useCallback(async (pluginId: string) => {
     setLoading(true);
     setError(null);
@@ -69,6 +69,27 @@ export function useItems(source: string | null, unreadOnly: boolean) {
     } finally {
       setLoading(false);
     }
+  }, [fetchItems]);
+
+  /** Poll all given plugins sequentially, then refresh the list once. */
+  const refreshAll = useCallback(async (pluginIds: string[]) => {
+    setLoading(true);
+    setError(null);
+    const errors: string[] = [];
+    for (const pluginId of pluginIds) {
+      try {
+        await invoke("refresh_plugin", { pluginId });
+      } catch (e) {
+        const msg = String(e);
+        // Silently ignore unconfigured plugins.
+        if (!msg.includes("no credentials") && !msg.includes("not configured")) {
+          errors.push(`${pluginId}: ${msg}`);
+        }
+      }
+    }
+    await fetchItems();
+    if (errors.length > 0) setError(errors.join(" | "));
+    setLoading(false);
   }, [fetchItems]);
 
   /** Optimistically flip is_read, then persist via IPC. */
@@ -87,5 +108,5 @@ export function useItems(source: string | null, unreadOnly: boolean) {
     }
   }, []);
 
-  return { items, loading, error, refresh, markRead };
+  return { items, loading, error, refresh, refreshAll, markRead };
 }

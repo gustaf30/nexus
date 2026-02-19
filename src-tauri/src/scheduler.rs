@@ -113,13 +113,21 @@ pub fn start_polling(app: AppHandle, db: Arc<Mutex<Database>>, plugins_dir: Path
             interval.tick().await;
 
             if let Ok(db_ref) = db.lock() {
-                match scheduler.poll_plugin("jira", &db_ref, &app) {
-                    Ok(count) => {
-                        println!("[scheduler] jira: fetched {} items", count);
-                        let _ = app.emit("items-updated", "jira");
-                    }
-                    Err(e) => {
-                        eprintln!("[scheduler] jira poll error: {}", e);
+                for plugin_id in &["jira", "github", "gmail"] {
+                    match scheduler.poll_plugin(plugin_id, &db_ref, &app) {
+                        Ok(count) => {
+                            println!("[scheduler] {}: fetched {} items", plugin_id, count);
+                            let _ = app.emit("items-updated", *plugin_id);
+                        }
+                        Err(e) => {
+                            // Silently skip plugins that aren't configured yet.
+                            let silent = e.contains("no credentials")
+                                || e.contains("not configured")
+                                || e.contains("disabled");
+                            if !silent {
+                                eprintln!("[scheduler] {} poll error: {}", plugin_id, e);
+                            }
+                        }
                     }
                 }
             }

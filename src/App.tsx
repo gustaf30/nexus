@@ -34,33 +34,48 @@ export default function App() {
   const [activeSource, setActiveSource] = useState<Source>("all");
   const [unreadOnly, setUnreadOnly]   = useState(false);
   const [selectedItem, setSelectedItem] = useState<NexusItem | null>(null);
-  const [jiraConfig, setJiraConfig]   = useState<PluginConfig | null>(null);
+  const [pluginConfigs, setPluginConfigs] = useState<PluginConfig[]>([]);
 
   const source = activeSource === "all" ? null : activeSource;
-  const { items, loading, error, refresh, markRead } = useItems(source, unreadOnly);
+  const { items, loading, error, refresh, refreshAll, markRead } = useItems(source, unreadOnly);
+
+  const ALL_PLUGINS = ["jira", "github", "gmail"] as const;
 
   useEffect(() => {
-    loadJiraConfig();
+    loadAllConfigs();
   }, []);
 
-  // Reload config when returning from settings so status bar updates immediately.
+  // Reload configs when returning from settings so status bar updates immediately.
   useEffect(() => {
-    if (view === "dashboard") loadJiraConfig();
+    if (view === "dashboard") loadAllConfigs();
   }, [view]);
 
-  async function loadJiraConfig() {
-    try {
-      const config = await invoke<PluginConfig | null>("get_plugin_config", { pluginId: "jira" });
-      setJiraConfig(config);
-    } catch {
-      // no-op — status bar will show 0
+  async function loadAllConfigs() {
+    const configs: PluginConfig[] = [];
+    for (const pluginId of ALL_PLUGINS) {
+      try {
+        const config = await invoke<PluginConfig | null>("get_plugin_config", { pluginId });
+        if (config) configs.push(config);
+      } catch {
+        // no-op
+      }
     }
+    setPluginConfigs(configs);
   }
 
-  const handleRefresh = () => refresh("jira");
+  const handleRefresh = () => {
+    if (source) {
+      refresh(source);
+    } else {
+      refreshAll([...ALL_PLUGINS]);
+    }
+  };
 
-  const activePlugins = jiraConfig?.is_enabled && jiraConfig.credentials ? 1 : 0;
-  const lastSyncAt    = jiraConfig?.last_poll_at ?? null;
+  const activePlugins = pluginConfigs.filter((c) => c.is_enabled && c.credentials).length;
+  const lastSyncAt    = pluginConfigs.reduce<number | null>((latest, c) => {
+    if (c.last_poll_at === null) return latest;
+    return latest === null ? c.last_poll_at : Math.max(latest, c.last_poll_at);
+  }, null);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
