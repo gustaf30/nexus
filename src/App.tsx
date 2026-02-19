@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Bell, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import "./styles/theme.css";
 
@@ -9,6 +10,14 @@ import { Settings } from "./components/Settings";
 
 type View   = "dashboard" | "settings";
 type Source = "all" | "jira" | "gmail" | "slack" | "github";
+
+interface PluginConfig {
+  plugin_id: string;
+  is_enabled: boolean;
+  credentials: string | null;
+  poll_interval_secs: number;
+  last_poll_at: number | null;
+}
 
 const SOURCES: { id: Source; label: string; color: string }[] = [
   { id: "all",    label: "All",    color: "var(--text-primary)" },
@@ -25,11 +34,33 @@ export default function App() {
   const [activeSource, setActiveSource] = useState<Source>("all");
   const [unreadOnly, setUnreadOnly]   = useState(false);
   const [selectedItem, setSelectedItem] = useState<NexusItem | null>(null);
+  const [jiraConfig, setJiraConfig]   = useState<PluginConfig | null>(null);
 
   const source = activeSource === "all" ? null : activeSource;
   const { items, loading, error, refresh, markRead } = useItems(source, unreadOnly);
 
+  useEffect(() => {
+    loadJiraConfig();
+  }, []);
+
+  // Reload config when returning from settings so status bar updates immediately.
+  useEffect(() => {
+    if (view === "dashboard") loadJiraConfig();
+  }, [view]);
+
+  async function loadJiraConfig() {
+    try {
+      const config = await invoke<PluginConfig | null>("get_plugin_config", { pluginId: "jira" });
+      setJiraConfig(config);
+    } catch {
+      // no-op — status bar will show 0
+    }
+  }
+
   const handleRefresh = () => refresh("jira");
+
+  const activePlugins = jiraConfig?.is_enabled && jiraConfig.credentials ? 1 : 0;
+  const lastSyncAt    = jiraConfig?.last_poll_at ?? null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -73,7 +104,7 @@ export default function App() {
         <Settings onBack={() => setView("dashboard")} />
       )}
 
-      <StatusBar />
+      <StatusBar activePlugins={activePlugins} lastSyncAt={lastSyncAt} />
     </div>
   );
 }
@@ -275,7 +306,18 @@ function Sidebar({
 
 /* ── Status bar ───────────────────────────────────────────── */
 
-function StatusBar() {
+function timeAgoShort(ts: number): string {
+  const diff = Math.floor(Date.now() / 1000) - ts;
+  if (diff < 60)    return "just now";
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function StatusBar({ activePlugins, lastSyncAt }: { activePlugins: number; lastSyncAt: number | null }) {
+  const syncLabel = lastSyncAt !== null ? `◷ Synced ${timeAgoShort(lastSyncAt)}` : "◷ No sync yet";
+  const pluginsLabel = `${activePlugins} plugin${activePlugins !== 1 ? "s" : ""} active`;
+
   return (
     <footer
       style={{
@@ -292,9 +334,11 @@ function StatusBar() {
         gap: "var(--sp-3)",
       }}
     >
-      <span>◷ No sync yet</span>
+      <span>{syncLabel}</span>
       <span style={{ color: "var(--border-mid)" }}>·</span>
-      <span>0 plugins active</span>
+      <span style={{ color: activePlugins > 0 ? "var(--accent-primary)" : "var(--text-muted)" }}>
+        {pluginsLabel}
+      </span>
     </footer>
   );
 }
