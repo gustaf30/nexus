@@ -68,7 +68,14 @@ async function getAccessToken(config: GmailConfig): Promise<string> {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Failed to refresh Gmail access token: ${res.status} — ${body}`);
+    let hint = "";
+    try {
+      const err = JSON.parse(body) as { error?: string };
+      if (err.error === "unauthorized_client") {
+        hint = " — OAuth client must be type 'Desktop app' in Google Cloud Console (not 'Web application'). Re-create the credential and regenerate the refresh token.";
+      }
+    } catch { /* ignore parse errors */ }
+    throw new Error(`Failed to refresh Gmail access token: ${res.status}${hint}`);
   }
   const data = await res.json() as { access_token: string };
   return data.access_token;

@@ -43,13 +43,14 @@ function adfToText(node: AdfNode | null | undefined): string {
 // Entry point — called by Rust plugin runtime
 export async function fetch(configJson: string): Promise<string> {
   const config: JiraConfig = JSON.parse(configJson);
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
   const auth = btoa(`${config.email}:${config.apiToken}`);
 
   const jql = "assignee = currentUser() AND status != Done ORDER BY updated DESC";
 
   // GET /rest/api/3/search was permanently removed (410) in newer Jira Cloud.
   // Use POST /rest/api/3/issue/search instead.
-  const response = await globalThis.fetch(`${config.baseUrl}/rest/api/3/issue/search`, {
+  const response = await globalThis.fetch(`${baseUrl}/rest/api/3/issue/search`, {
     method: "POST",
     headers: {
       "Authorization": `Basic ${auth}`,
@@ -80,7 +81,7 @@ export async function fetch(configJson: string): Promise<string> {
     summary: issue.fields.description
       ? adfToText(issue.fields.description).substring(0, 200) || null
       : null,
-    url: `${config.baseUrl}/browse/${issue.key}`,
+    url: `${baseUrl}/browse/${issue.key}`,
     author: issue.fields.reporter?.displayName ?? null,
     timestamp: Math.floor(new Date(issue.fields.updated).getTime() / 1000),
     metadata: {
@@ -135,9 +136,10 @@ export async function fetch(configJson: string): Promise<string> {
 // Validate connection — called by Settings panel before saving credentials
 export async function validateConnection(configJson: string): Promise<string> {
   const config: JiraConfig = JSON.parse(configJson);
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
   const auth = btoa(`${config.email}:${config.apiToken}`);
 
-  const response = await globalThis.fetch(`${config.baseUrl}/rest/api/3/myself`, {
+  const response = await globalThis.fetch(`${baseUrl}/rest/api/3/myself`, {
     headers: {
       "Authorization": `Basic ${auth}`,
       "Content-Type": "application/json",
