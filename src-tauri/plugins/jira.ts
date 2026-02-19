@@ -48,9 +48,8 @@ export async function fetch(configJson: string): Promise<string> {
 
   const jql = "assignee = currentUser() AND status != Done ORDER BY updated DESC";
 
-  // GET /rest/api/3/search was permanently removed (410) in newer Jira Cloud.
-  // Use POST /rest/api/3/issue/search instead.
-  const response = await globalThis.fetch(`${baseUrl}/rest/api/3/issue/search`, {
+  // Use POST /rest/api/3/search/jql (the current Jira Cloud search endpoint).
+  const response = await globalThis.fetch(`${baseUrl}/rest/api/3/search/jql`, {
     method: "POST",
     headers: {
       "Authorization": `Basic ${auth}`,
