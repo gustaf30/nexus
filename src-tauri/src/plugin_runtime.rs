@@ -69,14 +69,19 @@ const result = await {function}(Deno.env.get("NEXUS_CONFIG") ?? "{{}}");
 console.log(result);"#
     );
 
-    let output = Command::new("deno")
-        .args([
-            "eval",
-            &script,
-        ])
-        .env("NEXUS_CONFIG", config_json)
-        .output()
-        .map_err(|e| {
+    let mut cmd = Command::new("deno");
+    cmd.args(["eval", &script])
+        .env("NEXUS_CONFIG", config_json);
+
+    // On Windows, prevent a visible CMD window from flashing on each plugin execution.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = cmd.output().map_err(|e| {
             format!(
                 "Failed to launch deno: {}. Install Deno: https://deno.com \
                  (Windows: winget install Deno.Deno)",
