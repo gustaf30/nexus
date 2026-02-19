@@ -72,8 +72,6 @@ console.log(result);"#
     let output = Command::new("deno")
         .args([
             "eval",
-            "--allow-net",
-            "--allow-env=NEXUS_CONFIG",
             &script,
         ])
         .env("NEXUS_CONFIG", config_json)
