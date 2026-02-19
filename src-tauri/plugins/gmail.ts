@@ -9,8 +9,12 @@
 //     "vipSenders": ["boss@company.com"]   // optional
 //   }
 //
-// Setup: generate a refresh token once at https://developers.google.com/oauthplayground
-//   Scope: https://www.googleapis.com/auth/gmail.readonly
+// Setup: generate a refresh token via https://developers.google.com/oauthplayground
+//   1) Create a 'Web application' OAuth client in Google Cloud Console
+//   2) Add https://developers.google.com/oauthplayground to Authorized redirect URIs
+//   3) In the Playground, gear ⚙ → 'Use your own OAuth credentials' → paste Client ID & Secret
+//   4) Authorize scope: https://www.googleapis.com/auth/gmail.readonly
+//   5) Exchange authorization code → copy the Refresh token
 //
 // Signals:
 //   vip_sender      +3
@@ -70,9 +74,13 @@ async function getAccessToken(config: GmailConfig): Promise<string> {
     const body = await res.text();
     let hint = "";
     try {
-      const err = JSON.parse(body) as { error?: string };
+      const err = JSON.parse(body) as { error?: string; error_description?: string };
       if (err.error === "unauthorized_client") {
-        hint = " — OAuth client must be type 'Desktop app' in Google Cloud Console (not 'Web application'). Re-create the credential and regenerate the refresh token.";
+        hint = " — The refresh token is bound to a different Client ID. You must generate the token with the SAME credentials used in Nexus Hub. Steps: 1) In Google Cloud Console → Credentials, create an OAuth client of type 'Web application'. 2) Add 'https://developers.google.com/oauthplayground' to Authorized redirect URIs. 3) In OAuth Playground, gear icon ⚙ → 'Use your own OAuth credentials' → paste your Client ID & Secret. 4) Authorize scope 'https://www.googleapis.com/auth/gmail.readonly' → Exchange → copy the Refresh token. 5) Use the same Client ID + Secret + Refresh token in Nexus Hub.";
+      } else if (err.error === "redirect_uri_mismatch") {
+        hint = " — Add 'https://developers.google.com/oauthplayground' to Authorized redirect URIs in your Google Cloud Console OAuth client (must be type 'Web application', not 'Desktop app').";
+      } else if (err.error === "invalid_grant") {
+        hint = " — The refresh token has been revoked or expired. Re-generate it in OAuth Playground with the same Client ID & Secret configured in Nexus Hub.";
       }
     } catch { /* ignore parse errors */ }
     throw new Error(`Failed to refresh Gmail access token: ${res.status}${hint}`);
@@ -120,17 +128,22 @@ export async function fetch(configJson: string): Promise<string> {
   const listData = await listRes.json() as { messages?: MessageListItem[] };
   const messageList: MessageListItem[] = listData.messages ?? [];
 
-  // Fetch metadata for each message in parallel (capped at 30).
-  const messages = await Promise.all(
-    messageList.map(async (m): Promise<GmailMessage> => {
-      const res = await globalThis.fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From,Subject,Date`,
-        { headers: authHeader },
-      );
-      if (!res.ok) throw new Error(`Gmail message fetch error: ${res.status}`);
-      return res.json() as Promise<GmailMessage>;
-    }),
-  );
+  // Fetch metadata in batches of 5 to avoid Gmail 429 rate limiting.
+  const messages: GmailMessage[] = [];
+  for (let i = 0; i < messageList.length; i += 5) {
+    const batch = messageList.slice(i, i + 5);
+    const batchResults = await Promise.all(
+      batch.map(async (m): Promise<GmailMessage> => {
+        const res = await globalThis.fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From,Subject,Date`,
+          { headers: authHeader },
+        );
+        if (!res.ok) throw new Error(`Gmail message fetch error: ${res.status}`);
+        return res.json() as Promise<GmailMessage>;
+      }),
+    );
+    messages.push(...batchResults);
+  }
 
   const now = Math.floor(Date.now() / 1000);
 
