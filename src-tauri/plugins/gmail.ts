@@ -128,17 +128,22 @@ export async function fetch(configJson: string): Promise<string> {
   const listData = await listRes.json() as { messages?: MessageListItem[] };
   const messageList: MessageListItem[] = listData.messages ?? [];
 
-  // Fetch metadata for each message in parallel (capped at 30).
-  const messages = await Promise.all(
-    messageList.map(async (m): Promise<GmailMessage> => {
-      const res = await globalThis.fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From,Subject,Date`,
-        { headers: authHeader },
-      );
-      if (!res.ok) throw new Error(`Gmail message fetch error: ${res.status}`);
-      return res.json() as Promise<GmailMessage>;
-    }),
-  );
+  // Fetch metadata in batches of 5 to avoid Gmail 429 rate limiting.
+  const messages: GmailMessage[] = [];
+  for (let i = 0; i < messageList.length; i += 5) {
+    const batch = messageList.slice(i, i + 5);
+    const batchResults = await Promise.all(
+      batch.map(async (m): Promise<GmailMessage> => {
+        const res = await globalThis.fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From,Subject,Date`,
+          { headers: authHeader },
+        );
+        if (!res.ok) throw new Error(`Gmail message fetch error: ${res.status}`);
+        return res.json() as Promise<GmailMessage>;
+      }),
+    );
+    messages.push(...batchResults);
+  }
 
   const now = Math.floor(Date.now() / 1000);
 
