@@ -3,8 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { RefreshCw, Settings as SettingsIcon, Shield } from "lucide-react";
 import "./styles/theme.css";
 
-import { useItems, type NexusItem } from "./hooks/useItems";
-import { useNotifications, type Notification } from "./hooks/useNotifications";
+import { useItems } from "./hooks/useItems";
+import { useNotifications } from "./hooks/useNotifications";
+import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
+import type { NexusItem } from "./types";
+import type { Notification } from "./types";
+import type { PluginConfig } from "./types";
+import { timeAgo } from "./utils/time";
 import { Feed } from "./components/Feed";
 import { DetailPanel } from "./components/DetailPanel";
 import { Settings } from "./components/Settings";
@@ -13,14 +18,6 @@ import { CommandPalette } from "./components/CommandPalette";
 
 type View   = "dashboard" | "settings";
 type Source = "all" | "jira" | "gmail" | "slack" | "github";
-
-interface PluginConfig {
-  plugin_id: string;
-  is_enabled: boolean;
-  credentials: string | null;
-  poll_interval_secs: number;
-  last_poll_at: number | null;
-}
 
 const SOURCES: { id: Source; label: string; color: string }[] = [
   { id: "all",    label: "All",    color: "var(--text-primary)" },
@@ -87,76 +84,25 @@ export default function App() {
     return () => document.removeEventListener("contextmenu", prevent);
   }, []);
 
+  const handleRefresh = () => {
+    if (source) {
+      refresh(source);
+    } else {
+      refreshAll([...ALL_PLUGINS]);
+    }
+  };
+
   /* ── Global keyboard shortcuts ── */
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey;
-
-      // Ctrl+R — refresh plugins
-      if (mod && e.key === "r") {
-        e.preventDefault();
-        handleRefresh();
-      }
-
-      // Ctrl+, — toggle settings
-      if (mod && e.key === ",") {
-        e.preventDefault();
-        setView((v) => (v === "settings" ? "dashboard" : "settings"));
-      }
-
-      // Ctrl+K — command palette
-      if (mod && e.key === "k") {
-        e.preventDefault();
-        setPaletteOpen((v) => !v);
-      }
-
-      // j/k/Enter/m — feed navigation (only on dashboard, not when typing)
-      if (view === "dashboard" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
-        if (e.key === "j") {
-          e.preventDefault();
-          setSelectedItem((prev) => {
-            const idx = prev ? filteredItems.findIndex((i) => i.id === prev.id) : -1;
-            const next = idx + 1 < filteredItems.length ? idx + 1 : 0;
-            return filteredItems[next] ?? null;
-          });
-          return;
-        }
-        if (e.key === "k") {
-          e.preventDefault();
-          setSelectedItem((prev) => {
-            const idx = prev ? filteredItems.findIndex((i) => i.id === prev.id) : 0;
-            const next = idx > 0 ? idx - 1 : filteredItems.length - 1;
-            return filteredItems[next] ?? null;
-          });
-          return;
-        }
-        if (e.key === "Enter" && selectedItem?.url) {
-          e.preventDefault();
-          import("@tauri-apps/plugin-opener").then(({ openUrl }) => {
-            openUrl(selectedItem.url).catch(console.error);
-          });
-          return;
-        }
-        if (e.key === "m" && selectedItem) {
-          e.preventDefault();
-          markRead(selectedItem.id, !selectedItem.is_read);
-          return;
-        }
-      }
-
-      // Escape — deselect item or close settings
-      if (e.key === "Escape") {
-        if (view === "settings") {
-          setView("dashboard");
-        } else {
-          setSelectedItem(null);
-        }
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [view, source, loading, filteredItems, selectedItem, markRead]);
+  useKeyboardNavigation({
+    view,
+    filteredItems,
+    selectedItem,
+    setSelectedItem,
+    setView,
+    setPaletteOpen,
+    markRead,
+    onRefresh: handleRefresh,
+  });
 
   // Reload configs when returning from settings so status bar updates immediately.
   useEffect(() => {
@@ -176,14 +122,6 @@ export default function App() {
     setPluginConfigs(configs);
   }
 
-  const handleRefresh = () => {
-    if (source) {
-      refresh(source);
-    } else {
-      refreshAll([...ALL_PLUGINS]);
-    }
-  };
-
   const handleOpenNotificationItem = (itemId: string) => {
     const item = items.find((i) => i.id === itemId);
     if (item) {
@@ -193,7 +131,7 @@ export default function App() {
   };
 
   const commands = [
-    { id: "dashboard", label: "Go to Dashboard", shortcut: "Ctrl+,", action: () => setView("dashboard") },
+    { id: "dashboard", label: "Go to Dashboard", action: () => setView("dashboard") },
     { id: "settings", label: "Go to Settings", shortcut: "Ctrl+,", action: () => setView("settings") },
     { id: "jira", label: "Filter: Jira", action: () => { setActiveSource("jira"); setView("dashboard"); } },
     { id: "gmail", label: "Filter: Gmail", action: () => { setActiveSource("gmail"); setView("dashboard"); } },
@@ -408,6 +346,7 @@ function Sidebar({
             <button
               key={s.id}
               onClick={() => onSourceChange(s.id)}
+              aria-label={`Filter by ${s.label}`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -480,16 +419,8 @@ function Sidebar({
 
 /* ── Status bar ───────────────────────────────────────────── */
 
-function timeAgoShort(ts: number): string {
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60)    return "just now";
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
-
 function StatusBar({ activePlugins, lastSyncAt }: { activePlugins: number; lastSyncAt: number | null }) {
-  const syncLabel = lastSyncAt !== null ? `◷ Synced ${timeAgoShort(lastSyncAt)}` : "◷ No sync yet";
+  const syncLabel = lastSyncAt !== null ? `◷ Synced ${timeAgo(lastSyncAt)}` : "◷ No sync yet";
   const pluginsLabel = `${activePlugins} plugin${activePlugins !== 1 ? "s" : ""} active`;
 
   return (
@@ -534,30 +465,11 @@ function IconButton({
 }) {
   return (
     <button
+      className="icon-button"
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 28,
-        height: 28,
-        borderRadius: "var(--radius-md)",
-        color: active ? "var(--accent-primary)" : "var(--text-muted)",
-        background: active ? "var(--bg-raised)" : "transparent",
-        transition: "color var(--transition-fast), background var(--transition-fast)",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.4 : 1,
-      }}
-      onMouseEnter={(e) => {
-        if (!active && !disabled)
-          (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)";
-      }}
-      onMouseLeave={(e) => {
-        if (!active && !disabled)
-          (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
-      }}
+      data-active={String(active)}
     >
       {icon}
     </button>

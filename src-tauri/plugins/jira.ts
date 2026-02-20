@@ -1,6 +1,8 @@
 // Jira Plugin for Nexus Hub
 // Fetches issues assigned to the configured user from Jira REST API v3
 
+import { computeUrgency, fetchWithTimeout, parseCredentials } from "./plugin_interface.ts";
+
 interface JiraConfig {
   baseUrl: string;   // e.g. "https://mycompany.atlassian.net"
   email: string;     // Jira account email
@@ -42,19 +44,14 @@ function adfToText(node: AdfNode | null | undefined): string {
 
 // Entry point — called by Rust plugin runtime
 export async function fetch(configJson: string): Promise<string> {
-  let config: JiraConfig;
-  try {
-    config = JSON.parse(configJson);
-  } catch (e) {
-    throw new Error(`Invalid Jira credentials JSON: ${e instanceof Error ? e.message : e}`);
-  }
+  const config = parseCredentials<JiraConfig>(configJson, "Jira");
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
   const auth = btoa(`${config.email}:${config.apiToken}`);
 
   const jql = "assignee = currentUser() AND status != Done ORDER BY updated DESC";
 
   // Use POST /rest/api/3/search/jql (the current Jira Cloud search endpoint).
-  const response = await globalThis.fetch(`${baseUrl}/rest/api/3/search/jql`, {
+  const response = await fetchWithTimeout(`${baseUrl}/rest/api/3/search/jql`, {
     method: "POST",
     headers: {
       "Authorization": `Basic ${auth}`,
@@ -119,12 +116,7 @@ export async function fetch(configJson: string): Promise<string> {
         }
       }
 
-      const totalWeight = signals.reduce((sum, s) => sum + s.weight, 0);
-      let urgency: "low" | "medium" | "high" | "critical";
-      if (totalWeight >= 9) urgency = "critical";
-      else if (totalWeight >= 6) urgency = "high";
-      else if (totalWeight >= 3) urgency = "medium";
-      else urgency = "low";
+      const urgency = computeUrgency(signals);
 
       return {
         itemId: `jira-${issue.key}`,
@@ -139,16 +131,11 @@ export async function fetch(configJson: string): Promise<string> {
 
 // Validate connection — called by Settings panel before saving credentials
 export async function validateConnection(configJson: string): Promise<string> {
-  let config: JiraConfig;
-  try {
-    config = JSON.parse(configJson);
-  } catch (e) {
-    throw new Error(`Invalid Jira credentials JSON: ${e instanceof Error ? e.message : e}`);
-  }
+  const config = parseCredentials<JiraConfig>(configJson, "Jira");
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
   const auth = btoa(`${config.email}:${config.apiToken}`);
 
-  const response = await globalThis.fetch(`${baseUrl}/rest/api/3/myself`, {
+  const response = await fetchWithTimeout(`${baseUrl}/rest/api/3/myself`, {
     headers: {
       "Authorization": `Basic ${auth}`,
       "Content-Type": "application/json",

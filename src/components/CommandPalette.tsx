@@ -56,6 +56,8 @@ export function CommandPalette({ open, onClose, commands }: Props) {
 
   return (
     <div
+      role="dialog"
+      aria-label="Command palette"
       style={{
         position: "fixed",
         inset: 0,
@@ -112,7 +114,7 @@ export function CommandPalette({ open, onClose, commands }: Props) {
         </div>
 
         {/* Results */}
-        <div style={{ overflowY: "auto", flex: 1 }}>
+        <div role="listbox" style={{ overflowY: "auto", flex: 1 }}>
           {filtered.length === 0 ? (
             <div
               style={{
@@ -129,6 +131,8 @@ export function CommandPalette({ open, onClose, commands }: Props) {
             filtered.map((cmd, i) => (
               <div
                 key={cmd.id}
+                role="option"
+                aria-selected={i === selectedIndex}
                 onClick={() => { cmd.action(); onClose(); }}
                 style={{
                   padding: "var(--sp-2) var(--sp-3)",

@@ -101,10 +101,13 @@ pub fn send_native_notification(app: &AppHandle, notif: &Notification, title: &s
         format!("{} {}", urgency_label, title)
     };
 
-    let _ = app
+    if let Err(e) = app
         .notification()
         .builder()
         .title(&notif_title)
         .body(&humanize_reason(&notif.reason))
-        .show();
+        .show()
+    {
+        eprintln!("[notifications] Failed to show notification: {}", e);
+    }
 }

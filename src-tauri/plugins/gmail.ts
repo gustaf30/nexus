@@ -1,5 +1,7 @@
 // Gmail Plugin for Nexus Hub
 // Fetches unread emails from INBOX via Gmail API using OAuth2 refresh token
+
+import { computeUrgency, fetchWithTimeout, parseCredentials } from "./plugin_interface.ts";
 //
 // Config JSON shape:
 //   {
@@ -60,7 +62,7 @@ interface GmailMessage {
 
 /** Exchange the refresh token for a short-lived access token. */
 async function getAccessToken(config: GmailConfig): Promise<string> {
-  const res = await globalThis.fetch("https://oauth2.googleapis.com/token", {
+  const res = await fetchWithTimeout("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -111,12 +113,7 @@ function hasAttachment(part: MessagePart): boolean {
 }
 
 export async function fetch(configJson: string): Promise<string> {
-  let config: GmailConfig;
-  try {
-    config = JSON.parse(configJson);
-  } catch (e) {
-    throw new Error(`Invalid Gmail credentials JSON: ${e instanceof Error ? e.message : e}`);
-  }
+  const config = parseCredentials<GmailConfig>(configJson, "Gmail");
   const vipSet = new Set((config.vipSenders ?? []).map((s) => s.toLowerCase()));
 
   const accessToken = await getAccessToken(config);
@@ -124,7 +121,7 @@ export async function fetch(configJson: string): Promise<string> {
   const authHeader = { Authorization: `Bearer ${accessToken}` };
 
   // List up to 30 unread messages in INBOX (keep request count low).
-  const listRes = await globalThis.fetch(
+  const listRes = await fetchWithTimeout(
     "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&q=is:unread&maxResults=30",
     { headers: authHeader },
   );
@@ -145,7 +142,7 @@ export async function fetch(configJson: string): Promise<string> {
         params.append("metadataHeaders", "From");
         params.append("metadataHeaders", "Subject");
         params.append("metadataHeaders", "Date");
-        const res = await globalThis.fetch(
+        const res = await fetchWithTimeout(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?${params}`,
           { headers: authHeader },
         );
@@ -212,12 +209,7 @@ export async function fetch(configJson: string): Promise<string> {
         signals.push({ reason: "has_attachment", weight: 1 });
       }
 
-      const totalWeight = signals.reduce((sum, s) => sum + s.weight, 0);
-      let urgency: "low" | "medium" | "high" | "critical";
-      if (totalWeight >= 9) urgency = "critical";
-      else if (totalWeight >= 6) urgency = "high";
-      else if (totalWeight >= 3) urgency = "medium";
-      else urgency = "low";
+      const urgency = computeUrgency(signals);
 
       return {
         itemId: item.id,
@@ -231,20 +223,16 @@ export async function fetch(configJson: string): Promise<string> {
 }
 
 export async function validateConnection(configJson: string): Promise<string> {
-  let config: GmailConfig;
-  try {
-    config = JSON.parse(configJson);
-  } catch (e) {
-    throw new Error(`Invalid Gmail credentials JSON: ${e instanceof Error ? e.message : e}`);
-  }
+  const config = parseCredentials<GmailConfig>(configJson, "Gmail");
   try {
     const accessToken = await getAccessToken(config);
-    const res = await globalThis.fetch(
+    const res = await fetchWithTimeout(
       "https://gmail.googleapis.com/gmail/v1/users/me/profile",
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     return JSON.stringify({ ok: res.ok, status: res.status });
-  } catch {
-    return JSON.stringify({ ok: false, status: 0 });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return JSON.stringify({ ok: false, status: 0, error: message });
   }
 }

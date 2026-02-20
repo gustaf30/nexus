@@ -1,45 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Bell, X } from "lucide-react";
-import type { Notification } from "../hooks/useNotifications";
-
-const URGENCY_COLOR: Record<string, string> = {
-  low: "var(--urgency-low)",
-  medium: "var(--urgency-medium)",
-  high: "var(--urgency-high)",
-  critical: "var(--urgency-critical)",
-};
-
-const REASON_LABELS: Record<string, string> = {
-  assigned_to_me: "Assigned to you",
-  assigned: "Assigned to you",
-  high_priority: "High priority",
-  priority_p1_blocker: "High priority",
-  deadline_approaching: "Deadline approaching",
-  deadline_24h: "Deadline approaching",
-  mentioned_in_comment: "You were mentioned",
-  mentioned: "You were mentioned",
-  vip_sender: "VIP sender",
-  unread_over_4h: "Unread for 4+ hours",
-  has_attachment: "Has attachment",
-  pr_review_requested: "Review requested",
-  ci_failed: "CI failed",
-  pr_comment: "Comment on your PR",
-};
-
-function humanizeReason(reason: string): string {
-  return reason
-    .split(",")
-    .map((s) => REASON_LABELS[s.trim()] ?? s.trim())
-    .join(", ");
-}
-
-function timeAgo(ts: number): string {
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
+import type { Notification } from "../types";
+import { URGENCY_COLOR, humanizeReason } from "../constants/design";
+import { timeAgo } from "../utils/time";
 
 interface Props {
   notifications: Notification[];
@@ -62,6 +25,18 @@ export function NotificationCenter({ notifications, onDismiss, onDismissAll, onO
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
   }, [open]);
 
   const count = notifications.length;
@@ -115,6 +90,7 @@ export function NotificationCenter({ notifications, onDismiss, onDismissAll, onO
       {/* Dropdown */}
       {open && (
         <div
+          role="menu"
           style={{
             position: "absolute",
             top: 34,
@@ -185,6 +161,7 @@ export function NotificationCenter({ notifications, onDismiss, onDismissAll, onO
             notifications.map((n) => (
               <div
                 key={n.id}
+                role="menuitem"
                 style={{
                   padding: "var(--sp-2) var(--sp-3)",
                   display: "flex",
@@ -228,6 +205,7 @@ export function NotificationCenter({ notifications, onDismiss, onDismissAll, onO
 
                 {/* Dismiss button */}
                 <button
+                  aria-label="Dismiss notification"
                   onClick={(e) => { e.stopPropagation(); onDismiss(n.id); }}
                   style={{
                     display: "flex",

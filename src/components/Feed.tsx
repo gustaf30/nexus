@@ -1,5 +1,5 @@
 import { FeedItem } from "./FeedItem";
-import type { NexusItem } from "../hooks/useItems";
+import type { NexusItem } from "../types";
 
 interface Props {
   items: NexusItem[];
@@ -55,7 +55,7 @@ export function Feed({ items, loading, error, selectedId, onSelect }: Props) {
         >
           Failed to load items
         </p>
-        <p
+        <details
           style={{
             fontSize: 11,
             color: "var(--text-muted)",
@@ -63,8 +63,9 @@ export function Feed({ items, loading, error, selectedId, onSelect }: Props) {
             maxWidth: 280,
           }}
         >
-          {error}
-        </p>
+          <summary style={{ cursor: "pointer", marginBottom: "var(--sp-1)" }}>Show details</summary>
+          <p>{error}</p>
+        </details>
       </div>
     );
   }
@@ -95,7 +96,7 @@ export function Feed({ items, loading, error, selectedId, onSelect }: Props) {
           All clear, adventurer.
         </p>
         <p style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
-          Configure a plugin in Settings, then click Refresh.
+          Items will appear here when your plugins sync.
         </p>
       </div>
     );
@@ -103,7 +104,7 @@ export function Feed({ items, loading, error, selectedId, onSelect }: Props) {
 
   /* ── Item list ── */
   return (
-    <div>
+    <div role="list" aria-live="polite">
       {items.map((item) => (
         <FeedItem
           key={item.id}

@@ -11,6 +11,38 @@ use crate::db::Database;
 use crate::models::{NexusItem, Notification};
 use crate::plugin_runtime;
 
+impl From<(&plugin_runtime::PluginItem, i64)> for NexusItem {
+    fn from((pi, now): (&plugin_runtime::PluginItem, i64)) -> Self {
+        Self {
+            id: pi.id.clone(),
+            source: pi.source.clone(),
+            source_id: pi.source_id.clone(),
+            item_type: pi.item_type.clone(),
+            title: pi.title.clone(),
+            summary: pi.summary.clone(),
+            url: pi.url.clone(),
+            author: pi.author.clone(),
+            timestamp: pi.timestamp,
+            priority: 0,
+            metadata: Some(
+                serde_json::to_string(&pi.metadata).unwrap_or_else(|e| {
+                    eprintln!("[scheduler] metadata serialization failed: {}", e);
+                    "{}".to_string()
+                }),
+            ),
+            tags: Some(
+                serde_json::to_string(&pi.tags).unwrap_or_else(|e| {
+                    eprintln!("[scheduler] tags serialization failed: {}", e);
+                    "[]".to_string()
+                }),
+            ),
+            is_read: false,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+}
+
 pub struct Scheduler {
     plugins_dir: PathBuf,
 }
@@ -50,6 +82,11 @@ impl Scheduler {
             // db_ref dropped here — lock released before subprocess call
         };
 
+        // Validate plugin_id to prevent path traversal
+        if plugin_id.contains("..") || plugin_id.contains('/') || plugin_id.contains('\\') {
+            return Err(format!("Invalid plugin ID: '{}'", plugin_id));
+        }
+
         let plugin_path = self.plugins_dir.join(format!("{}.ts", plugin_id));
         if !plugin_path.exists() {
             return Err(format!("Plugin file not found: {:?}", plugin_path));
@@ -66,33 +103,7 @@ impl Scheduler {
             let db_ref = db.lock().map_err(|e| format!("DB lock error: {}", e))?;
 
             for pi in &result.items {
-                let item = NexusItem {
-                    id: pi.id.clone(),
-                    source: pi.source.clone(),
-                    source_id: pi.source_id.clone(),
-                    item_type: pi.item_type.clone(),
-                    title: pi.title.clone(),
-                    summary: pi.summary.clone(),
-                    url: pi.url.clone(),
-                    author: pi.author.clone(),
-                    timestamp: pi.timestamp,
-                    priority: 0,
-                    metadata: Some(
-                        serde_json::to_string(&pi.metadata).unwrap_or_else(|e| {
-                            eprintln!("[scheduler] {}: metadata serialization failed: {}", plugin_id, e);
-                            "{}".to_string()
-                        }),
-                    ),
-                    tags: Some(
-                        serde_json::to_string(&pi.tags).unwrap_or_else(|e| {
-                            eprintln!("[scheduler] {}: tags serialization failed: {}", plugin_id, e);
-                            "[]".to_string()
-                        }),
-                    ),
-                    is_read: false,
-                    created_at: now,
-                    updated_at: now,
-                };
+                let item = NexusItem::from((pi, now));
                 db_ref.upsert_item(&item).map_err(|e| e.to_string())?;
             }
 
@@ -173,7 +184,9 @@ pub fn start_polling(app: AppHandle, db: Arc<Mutex<Database>>, plugins_dir: Path
                 match scheduler.poll_plugin(&config.plugin_id, &db, &app) {
                     Ok(count) => {
                         println!("[scheduler] {}: fetched {} items", config.plugin_id, count);
-                        let _ = app.emit("items-updated", config.plugin_id.as_str());
+                        if let Err(e) = app.emit("items-updated", config.plugin_id.as_str()) {
+                            eprintln!("[scheduler] Failed to emit items-updated: {}", e);
+                        }
                     }
                     Err(e) => {
                         let silent = e.contains("no credentials")

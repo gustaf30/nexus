@@ -1,46 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Save, ArrowLeft, Shield } from "lucide-react";
-
-/* ── Types ────────────────────────────────────────────────── */
-
-interface PluginConfig {
-  plugin_id: string;
-  is_enabled: boolean;
-  credentials: string | null;
-  poll_interval_secs: number;
-  last_poll_at: number | null;
-  last_error: string | null;
-  error_count: number;
-  settings: string | null;
-}
-
-interface JiraCredentials {
-  baseUrl: string;
-  email: string;
-  apiToken: string;
-}
-
-interface GitHubCredentials {
-  token: string;
-}
-
-interface GmailCredentials {
-  clientId: string;
-  clientSecret: string;
-  refreshToken: string;
-  vipSenders: string; // comma-separated in the form
-}
-
-/* ── Helpers ─────────────────────────────────────────────── */
-
-function timeAgo(ts: number): string {
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60)    return "just now";
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
+import type { PluginConfig, JiraCredentials, GitHubCredentials, GmailCredentials } from "../types";
+import { timeAgo } from "../utils/time";
 
 /* ── Sub-components ──────────────────────────────────────── */
 
@@ -223,31 +185,10 @@ function PluginCard({
         }}
       >
         <button
+          className="btn-primary"
           onClick={onSave}
           disabled={saving}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--sp-2)",
-            padding: "7px 20px",
-            borderRadius: "var(--radius-md)",
-            background: "var(--accent-primary)",
-            color: "var(--text-inverse)",
-            border: "none",
-            fontSize: 12,
-            fontFamily: "var(--font-data)",
-            fontWeight: 600,
-            cursor: saving ? "not-allowed" : "pointer",
-            opacity: saving ? 0.7 : 1,
-            transition: "background var(--transition-fast)",
-          }}
-          onMouseEnter={(e) => {
-            if (!saving)
-              (e.currentTarget as HTMLButtonElement).style.background = "var(--accent-hover)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--accent-primary)";
-          }}
+          style={{ opacity: saving ? 0.7 : 1 }}
         >
           <Save size={12} />
           {saving ? "Saving…" : "Save"}
@@ -320,9 +261,9 @@ function JiraSection() {
         } satisfies PluginConfig,
       });
       setLastError(null);
-      setMessage({ text: "Saved.", ok: true });
-    } catch (e) {
-      setMessage({ text: String(e), ok: false });
+      setMessage({ text: "Credentials saved. Syncing now...", ok: true });
+    } catch {
+      setMessage({ text: "Couldn't save settings. Please check your connection and try again.", ok: false });
     } finally {
       setSaving(false);
     }
@@ -399,9 +340,9 @@ function GitHubSection() {
         } satisfies PluginConfig,
       });
       setLastError(null);
-      setMessage({ text: "Saved.", ok: true });
-    } catch (e) {
-      setMessage({ text: String(e), ok: false });
+      setMessage({ text: "Credentials saved. Syncing now...", ok: true });
+    } catch {
+      setMessage({ text: "Couldn't save settings. Please check your connection and try again.", ok: false });
     } finally {
       setSaving(false);
     }
@@ -504,9 +445,9 @@ function GmailSection() {
         } satisfies PluginConfig,
       });
       setLastError(null);
-      setMessage({ text: "Saved.", ok: true });
-    } catch (e) {
-      setMessage({ text: String(e), ok: false });
+      setMessage({ text: "Credentials saved. Syncing now...", ok: true });
+    } catch {
+      setMessage({ text: "Couldn't save settings. Please check your connection and try again.", ok: false });
     } finally {
       setSaving(false);
     }
@@ -603,9 +544,9 @@ function PreferencesSection() {
       if (quietEnd) {
         await invoke("set_app_setting", { key: "quiet_hours_end", value: quietEnd });
       }
-      setMessage({ text: "Saved.", ok: true });
-    } catch (e) {
-      setMessage({ text: String(e), ok: false });
+      setMessage({ text: "Preferences saved.", ok: true });
+    } catch {
+      setMessage({ text: "Couldn't save settings. Please check your connection and try again.", ok: false });
     } finally {
       setSaving(false);
     }
@@ -764,31 +705,10 @@ function PreferencesSection() {
         }}
       >
         <button
+          className="btn-primary"
           onClick={saveSettings}
           disabled={saving}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--sp-2)",
-            padding: "7px 20px",
-            borderRadius: "var(--radius-md)",
-            background: "var(--accent-primary)",
-            color: "var(--text-inverse)",
-            border: "none",
-            fontSize: 12,
-            fontFamily: "var(--font-data)",
-            fontWeight: 600,
-            cursor: saving ? "not-allowed" : "pointer",
-            opacity: saving ? 0.7 : 1,
-            transition: "background var(--transition-fast)",
-          }}
-          onMouseEnter={(e) => {
-            if (!saving)
-              (e.currentTarget as HTMLButtonElement).style.background = "var(--accent-hover)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--accent-primary)";
-          }}
+          style={{ opacity: saving ? 0.7 : 1 }}
         >
           <Save size={12} />
           {saving ? "Saving..." : "Save"}
@@ -811,11 +731,11 @@ function PreferencesSection() {
 
 /* ── Settings ────────────────────────────────────────────── */
 
-interface Props {
+interface SettingsProps {
   onBack: () => void;
 }
 
-export function Settings({ onBack }: Props) {
+export function Settings({ onBack }: SettingsProps) {
   return (
     <div
       style={{
@@ -835,29 +755,8 @@ export function Settings({ onBack }: Props) {
         }}
       >
         <button
+          className="btn-back"
           onClick={onBack}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--sp-1)",
-            padding: "4px 10px",
-            borderRadius: "var(--radius-md)",
-            border: "1px solid var(--border-dim)",
-            background: "transparent",
-            color: "var(--text-muted)",
-            fontSize: 11,
-            fontFamily: "var(--font-data)",
-            cursor: "pointer",
-            transition: "color var(--transition-fast), border-color var(--transition-fast)",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)";
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-mid)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-dim)";
-          }}
         >
           <ArrowLeft size={12} />
           Back

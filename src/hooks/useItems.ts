@@ -36,7 +36,14 @@ export function useItems(source: string | null, unreadOnly: boolean) {
       });
       setItems(result);
     } catch (e) {
-      setError(String(e));
+      const msg = String(e).toLowerCase();
+      if (msg.includes("network") || msg.includes("fetch")) {
+        setError("Couldn't reach the server. Check your connection.");
+      } else if (msg.includes("auth") || msg.includes("credentials") || msg.includes("401")) {
+        setError("Authentication failed. Check your credentials in Settings.");
+      } else {
+        setError("Something went wrong while fetching items.");
+      }
     } finally {
       setLoading(false);
     }
@@ -65,7 +72,14 @@ export function useItems(source: string | null, unreadOnly: boolean) {
       await invoke("refresh_plugin", { pluginId });
       await fetchItems();
     } catch (e) {
-      setError(String(e));
+      const msg = String(e).toLowerCase();
+      if (msg.includes("network") || msg.includes("fetch")) {
+        setError("Couldn't reach the server. Check your connection.");
+      } else if (msg.includes("auth") || msg.includes("credentials") || msg.includes("401")) {
+        setError("Authentication failed. Check your credentials in Settings.");
+      } else {
+        setError("Something went wrong while fetching items.");
+      }
     } finally {
       setLoading(false);
     }
@@ -87,9 +101,12 @@ export function useItems(source: string | null, unreadOnly: boolean) {
         }
       }
     }
-    await fetchItems();
-    if (errors.length > 0) setError(errors.join(" | "));
-    setLoading(false);
+    try {
+      await fetchItems();
+      if (errors.length > 0) setError("Some plugins had trouble syncing.");
+    } finally {
+      setLoading(false);
+    }
   }, [fetchItems]);
 
   /** Optimistically flip is_read, then persist via IPC. */
