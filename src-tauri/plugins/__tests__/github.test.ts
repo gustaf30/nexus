@@ -205,6 +205,8 @@ describe("GitHub plugin — validateConnection()", () => {
     });
 
     const result = JSON.parse(await validateConnection(configJson()));
-    expect(result).toEqual({ ok: false, status: 401 });
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(0);
+    expect(result.error).toContain("401");
   });
 });

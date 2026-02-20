@@ -225,3 +225,104 @@ button {
   .urgency-badge[data-urgency="critical"] { animation: none; }
   .skeleton { animation: none; opacity: 0.6; }
 }
+
+/* ── Utility classes ── */
+.icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  background: transparent;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  cursor: pointer;
+}
+
+.icon-button:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.icon-button[data-active="true"] {
+  color: var(--accent-primary);
+  background: var(--bg-raised);
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 7px 20px;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+  border: none;
+  font-size: 12px;
+  font-family: var(--font-data);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.btn-ghost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-mid);
+  font-size: 12px;
+  font-family: var(--font-data);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.btn-ghost:hover {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+}
+
+.btn-back {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-dim);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-data);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn-back:hover {
+  color: var(--text-primary);
+  border-color: var(--border-mid);
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,30 +1,10 @@
+import { useState } from "react";
 import { ExternalLink, Check } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { NexusItem } from "../hooks/useItems";
-
-/* ── Design system helpers ───────────────────────────────── */
-
-const SOURCE_COLOR: Record<string, string> = {
-  jira:   "var(--source-jira)",
-  gmail:  "var(--source-gmail)",
-  slack:  "var(--source-slack)",
-  github: "var(--source-github)",
-};
-
-const URGENCY_COLOR: Record<string, string> = {
-  low:      "var(--urgency-low)",
-  medium:   "var(--urgency-medium)",
-  high:     "var(--urgency-high)",
-  critical: "var(--urgency-critical)",
-};
-
-function priorityToUrgency(priority: string): "low" | "medium" | "high" | "critical" {
-  const p = priority.toLowerCase();
-  if (p === "highest" || p === "blocker") return "critical";
-  if (p === "high") return "high";
-  if (p === "medium") return "medium";
-  return "low";
-}
+import type { NexusItem } from "../types";
+import { SOURCE_COLOR, URGENCY_COLOR } from "../constants/design";
+import { priorityToUrgency } from "../utils/urgency";
+import { safeParseJson } from "../utils/json";
 
 /** Colorize a due-date string based on how close it is. */
 function dueDateColor(duedate: string): string | undefined {
@@ -84,6 +64,8 @@ interface Props {
 }
 
 export function DetailPanel({ item, onMarkRead }: Props) {
+  const [openError, setOpenError] = useState<string | null>(null);
+
   /* ── Empty state ── */
   if (!item) {
     return (
@@ -101,23 +83,26 @@ export function DetailPanel({ item, onMarkRead }: Props) {
             textAlign: "center",
           }}
         >
-          Select an item to see details.
+          Pick something from the feed to dive in.
         </div>
       </aside>
     );
   }
 
-  const meta        = item.metadata ? (JSON.parse(item.metadata) as Record<string, string>) : {};
-  const tags        = item.tags ? (JSON.parse(item.tags) as string[]) : [];
+  const meta        = safeParseJson<Record<string, string>>(item.metadata, {});
+  const tags        = safeParseJson<string[]>(item.tags, []);
   const sourceColor = SOURCE_COLOR[item.source] ?? "var(--border-dim)";
   const urgency     = meta.priority ? priorityToUrgency(meta.priority) : "low";
   const assignee    = meta.assignee ?? item.author ?? null;
 
   const handleOpen = async () => {
     try {
+      setOpenError(null);
       await openUrl(item.url);
     } catch (e) {
       console.error("openUrl failed:", e);
+      setOpenError("Couldn't open link");
+      setTimeout(() => setOpenError(null), 3000);
     }
   };
 
@@ -254,70 +239,36 @@ export function DetailPanel({ item, onMarkRead }: Props) {
         }}
       >
         {item.url && (
-          <button
-            onClick={handleOpen}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "var(--sp-2)",
-              width: "100%",
-              padding: "8px 12px",
-              borderRadius: "var(--radius-md)",
-              background: "var(--accent-primary)",
-              color: "var(--text-inverse)",
-              border: "none",
-              fontSize: 12,
-              fontFamily: "var(--font-data)",
-              fontWeight: 600,
-              cursor: "pointer",
-              transition: "background var(--transition-fast)",
-            }}
-            onMouseEnter={(e) =>
-              ((e.currentTarget as HTMLButtonElement).style.background =
-                "var(--accent-hover)")
-            }
-            onMouseLeave={(e) =>
-              ((e.currentTarget as HTMLButtonElement).style.background =
-                "var(--accent-primary)")
-            }
-          >
-            <ExternalLink size={13} />
-            Open in {item.source}
-          </button>
+          <>
+            <button
+              className="btn-primary"
+              onClick={handleOpen}
+              aria-label="Open in browser"
+              style={{ width: "100%" }}
+            >
+              <ExternalLink size={13} />
+              Open in {item.source}
+            </button>
+            {openError && (
+              <p
+                style={{
+                  fontFamily: "var(--font-data)",
+                  fontSize: 11,
+                  color: "var(--urgency-high)",
+                  textAlign: "center",
+                }}
+              >
+                {openError}
+              </p>
+            )}
+          </>
         )}
 
         <button
+          className="btn-ghost"
           onClick={() => onMarkRead(item.id, !item.is_read)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "var(--sp-2)",
-            width: "100%",
-            padding: "7px 12px",
-            borderRadius: "var(--radius-md)",
-            background: "var(--bg-raised)",
-            color: "var(--text-secondary)",
-            border: "1px solid var(--border-mid)",
-            fontSize: 12,
-            fontFamily: "var(--font-data)",
-            cursor: "pointer",
-            transition:
-              "background var(--transition-fast), color var(--transition-fast)",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "var(--bg-overlay)";
-            (e.currentTarget as HTMLButtonElement).style.color =
-              "var(--text-primary)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "var(--bg-raised)";
-            (e.currentTarget as HTMLButtonElement).style.color =
-              "var(--text-secondary)";
-          }}
+          aria-label={item.is_read ? "Mark as unread" : "Mark as read"}
+          style={{ width: "100%" }}
         >
           <Check size={13} />
           {item.is_read ? "Mark unread" : "Mark read"}

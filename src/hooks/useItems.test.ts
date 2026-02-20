@@ -36,7 +36,7 @@ describe("useItems", () => {
     const { result } = renderHook(() => useItems(null, false));
 
     await waitFor(() => {
-      expect(result.current.error).toBe("Error: DB unavailable");
+      expect(result.current.error).toBe("Something went wrong while fetching items.");
     });
     expect(result.current.items).toEqual([]);
     expect(result.current.loading).toBe(false);

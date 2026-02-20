@@ -1,5 +1,7 @@
 // GitHub Plugin for Nexus Hub
 // Fetches PRs needing review and assigned issues via GitHub REST API v3
+
+import { computeUrgency, fetchWithTimeout, parseCredentials } from "./plugin_interface.ts";
 //
 // Config JSON shape:
 //   { "token": "ghp_xxxx" }
@@ -35,7 +37,7 @@ interface SearchResult {
 
 async function githubGet(token: string, path: string): Promise<unknown> {
   const url = path.startsWith("http") ? path : `https://api.github.com${path}`;
-  const res = await globalThis.fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
@@ -55,12 +57,7 @@ function repoFromUrl(repositoryUrl: string): string {
 }
 
 export async function fetch(configJson: string): Promise<string> {
-  let config: GitHubConfig;
-  try {
-    config = JSON.parse(configJson);
-  } catch (e) {
-    throw new Error(`Invalid GitHub credentials JSON: ${e instanceof Error ? e.message : e}`);
-  }
+  const config = parseCredentials<GitHubConfig>(configJson, "GitHub");
   const { token } = config;
 
   const now = Math.floor(Date.now() / 1000);
@@ -128,12 +125,7 @@ export async function fetch(configJson: string): Promise<string> {
         signals.push({ reason: "assigned_issue", weight: 2 });
       }
 
-      const totalWeight = signals.reduce((sum, s) => sum + s.weight, 0);
-      let urgency: "low" | "medium" | "high" | "critical";
-      if (totalWeight >= 9) urgency = "critical";
-      else if (totalWeight >= 6) urgency = "high";
-      else if (totalWeight >= 3) urgency = "medium";
-      else urgency = "low";
+      const urgency = computeUrgency(signals);
 
       return {
         itemId: `github-${issue.id}`,
@@ -147,16 +139,12 @@ export async function fetch(configJson: string): Promise<string> {
 }
 
 export async function validateConnection(configJson: string): Promise<string> {
-  let config: GitHubConfig;
-  try {
-    config = JSON.parse(configJson);
-  } catch (e) {
-    throw new Error(`Invalid GitHub credentials JSON: ${e instanceof Error ? e.message : e}`);
-  }
+  const config = parseCredentials<GitHubConfig>(configJson, "GitHub");
   try {
     await githubGet(config.token, "/user");
     return JSON.stringify({ ok: true, status: 200 });
-  } catch {
-    return JSON.stringify({ ok: false, status: 401 });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return JSON.stringify({ ok: false, status: 0, error: message });
   }
 }

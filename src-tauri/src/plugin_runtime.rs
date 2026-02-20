@@ -98,7 +98,10 @@ console.log(result);"#
 }
 
 pub fn parse_plugin_result(json: &str) -> Result<PluginResult, String> {
-    serde_json::from_str(json).map_err(|e| format!("Failed to parse plugin result: {}", e))
+    serde_json::from_str(json).map_err(|e| {
+        let preview = if json.len() > 200 { &json[..200] } else { json };
+        format!("Failed to parse plugin result: {} (received: {}...)", e, preview)
+    })
 }
 
 #[cfg(test)]

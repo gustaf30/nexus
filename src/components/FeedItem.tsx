@@ -1,44 +1,8 @@
-import type { NexusItem } from "../hooks/useItems";
-
-/* ── Design system mappings ──────────────────────────────── */
-
-const SOURCE_COLOR: Record<string, string> = {
-  jira:   "var(--source-jira)",
-  gmail:  "var(--source-gmail)",
-  slack:  "var(--source-slack)",
-  github: "var(--source-github)",
-};
-
-const URGENCY_COLOR: Record<string, string> = {
-  low:      "var(--urgency-low)",
-  medium:   "var(--urgency-medium)",
-  high:     "var(--urgency-high)",
-  critical: "var(--urgency-critical)",
-};
-
-const URGENCY_BG: Record<string, string> = {
-  low:      "var(--urgency-low-bg)",
-  medium:   "var(--urgency-medium-bg)",
-  high:     "var(--urgency-high-bg)",
-  critical: "var(--urgency-critical-bg)",
-};
-
-/** Map Jira priority name → urgency tier for visual display. */
-function priorityToUrgency(priority: string): "low" | "medium" | "high" | "critical" {
-  const p = priority.toLowerCase();
-  if (p === "highest" || p === "blocker") return "critical";
-  if (p === "high") return "high";
-  if (p === "medium") return "medium";
-  return "low";
-}
-
-function timeAgo(ts: number): string {
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60)    return "just now";
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
+import type { NexusItem } from "../types";
+import { SOURCE_COLOR, URGENCY_COLOR, URGENCY_BG } from "../constants/design";
+import { priorityToUrgency } from "../utils/urgency";
+import { timeAgo } from "../utils/time";
+import { safeParseJson } from "../utils/json";
 
 /* ── Component ───────────────────────────────────────────── */
 
@@ -49,13 +13,14 @@ interface Props {
 }
 
 export function FeedItem({ item, isSelected, onClick }: Props) {
-  const meta        = item.metadata ? (JSON.parse(item.metadata) as Record<string, string>) : {};
+  const meta        = safeParseJson<Record<string, string>>(item.metadata, {});
   const sourceColor = SOURCE_COLOR[item.source] ?? "var(--border-dim)";
   const urgency     = meta.priority ? priorityToUrgency(meta.priority) : "low";
 
   return (
     <div
       className="feed-item"
+      role="listitem"
       data-selected={String(isSelected)}
       onClick={onClick}
       style={{
@@ -75,7 +40,7 @@ export function FeedItem({ item, isSelected, onClick }: Props) {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-1)", minWidth: 0 }}>
           {/* Urgency dot */}
-          <svg width="6" height="6" viewBox="0 0 6 6" style={{ flexShrink: 0 }}>
+          <svg width="6" height="6" viewBox="0 0 6 6" style={{ flexShrink: 0 }} aria-label={`Urgency: ${urgency}`}>
             <circle cx="3" cy="3" r="3" fill={URGENCY_COLOR[urgency]} />
           </svg>
 

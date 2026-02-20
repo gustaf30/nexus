@@ -3,9 +3,9 @@ import { DetailPanel } from "./DetailPanel";
 import { makeItem } from "../test/fixtures";
 
 describe("DetailPanel", () => {
-  it("shows empty state 'Select an item to see details.' when item is null", () => {
+  it("shows empty state message when item is null", () => {
     render(<DetailPanel item={null} onMarkRead={() => {}} />);
-    expect(screen.getByText("Select an item to see details.")).toBeInTheDocument();
+    expect(screen.getByText("Pick something from the feed to dive in.")).toBeInTheDocument();
   });
 
   it("renders metadata grid with STATUS, PRIORITY, and ASSIGNED rows", () => {
